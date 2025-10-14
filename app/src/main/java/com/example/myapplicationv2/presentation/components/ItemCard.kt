@@ -56,20 +56,22 @@ fun Itemcard(
                 // Add fixed widths or weights for neat alignment
                 Text(
                     text = toBuyItem.name,
+                    maxLines = 1,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.width(100.dp)
+                    modifier = Modifier.width(80.dp)
                 )
 
                 Text(
                     text = toBuyItem.quantity.toString(),
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(50.dp)
+                    modifier = Modifier.width(30.dp)
                 )
 
                 Text(
                     text = categories.find { it.id == toBuyItem.categoryId }?.name ?: "",
+                    maxLines = 1,
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(80.dp)
+                    modifier = Modifier.width(100.dp)
                 )
             }
 

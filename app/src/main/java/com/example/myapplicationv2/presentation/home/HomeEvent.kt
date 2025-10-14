@@ -16,7 +16,7 @@ sealed class HomeEvent {
 
     data class onQuantityChange(val quantity: String) : HomeEvent()
 
-    data class onCategoryChange(val category: String) : HomeEvent()
+    data class onCategoryChange(val categoryId: Int) : HomeEvent()
 
     data class onNewCategoryNameChange(val name: String) : HomeEvent()
 

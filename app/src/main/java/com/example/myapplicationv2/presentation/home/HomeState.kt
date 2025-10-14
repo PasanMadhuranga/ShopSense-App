@@ -8,6 +8,6 @@ data class HomeState(
     val categories: List<Category> = emptyList(),
     val itemName: String = "",
     val itemQuantity: String = "",
-    val itemCategory: String = "",
+    val itemCategoryId: Int? = null,
     val newCategoryName: String = ""
 )

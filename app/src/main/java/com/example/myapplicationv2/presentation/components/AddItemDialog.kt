@@ -4,17 +4,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.myapplicationv2.domain.model.Category
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,16 +19,22 @@ fun AddItemDialog(
     title: String = "Add Item",
     name: String,
     quantity: String,
-    category: String,
+    categories: List<Category>,
+    selectedCategoryId: Int?,
     onNameChange: (String) -> Unit,
     onQuantityChange: (String) -> Unit,
-    onCategoryChange: (String) -> Unit,
+    onCategoryChange: (Int) -> Unit,
     onDismissRequest: () -> Unit,
     onConfirmButtonClick: () -> Unit
 ) {
     var nameError by rememberSaveable { mutableStateOf<String?>(null) }
     var quantityError by rememberSaveable { mutableStateOf<String?>(null) }
     var categoryError by rememberSaveable { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf(false) }
+
+    val selectedCategoryName = remember(selectedCategoryId, categories) {
+        categories.firstOrNull { it.id == selectedCategoryId }?.name.orEmpty()
+    }
 
     nameError = when {
         name.isBlank() -> "Please enter an item name"
@@ -47,12 +49,12 @@ fun AddItemDialog(
     }
 
     categoryError = when {
-        category.isBlank() -> "Please enter a category"
+        categories.isEmpty() -> "No categories available. Add one first."
+        selectedCategoryId == null -> "Please select a category"
         else -> null
     }
 
     if (isOpen) {
-
         AlertDialog(
             onDismissRequest = onDismissRequest,
             title = { Text(text = title) },
@@ -77,21 +79,49 @@ fun AddItemDialog(
                         supportingText = { Text(quantityError.orEmpty()) }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = category,
-                        onValueChange = onCategoryChange,
-                        label = { Text("Category") },
-                        singleLine = true,
-                        isError = categoryError != null && category.isNotBlank(),
-                        supportingText = { Text(categoryError.orEmpty()) }
-                    )
+
+                    // Category dropdown
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedCategoryName,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Category") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            },
+                            isError = categoryError != null && selectedCategoryName.isNotBlank(),
+                            supportingText = { Text(categoryError.orEmpty()) },
+                            modifier = Modifier
+                                .menuAnchor()
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            categories.forEach { category ->
+                                val id = category.id
+                                DropdownMenuItem(
+                                    text = { Text(category.name) },
+                                    onClick = {
+                                        if (id != null) {
+                                            onCategoryChange(id)
+                                            expanded = false
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = onConfirmButtonClick,
-                    enabled = nameError == null && quantityError == null && categoryError == null
-                ) {
+                val enabled = nameError == null && quantityError == null && categoryError == null
+                TextButton(onClick = onConfirmButtonClick, enabled = enabled) {
                     Text(text = "Add")
                 }
             },

@@ -42,7 +42,8 @@ fun HomeScreen() {
         isOpen = isAddItemDialogOpen,
         name = state.itemName,
         quantity = state.itemQuantity,
-        category = state.itemCategory,
+        categories = state.categories,
+        selectedCategoryId = state.itemCategoryId,
         onNameChange = { onEvent(HomeEvent.onNameChange(it)) },
         onQuantityChange = { onEvent(HomeEvent.onQuantityChange(it)) },
         onCategoryChange = { onEvent(HomeEvent.onCategoryChange(it)) },
@@ -56,9 +57,10 @@ fun HomeScreen() {
     AddCategoryDialog(
         isOpen = isCategoryDialogOpen,
         name = state.newCategoryName,
-        onNameChange = { },
+        onNameChange = { onEvent(HomeEvent.onNewCategoryNameChange(it)) },
         onDismissRequest = { isCategoryDialogOpen = false },
         onConfirmButtonClick = {
+            onEvent(HomeEvent.SaveCategory)
             isCategoryDialogOpen = false
         }
     )

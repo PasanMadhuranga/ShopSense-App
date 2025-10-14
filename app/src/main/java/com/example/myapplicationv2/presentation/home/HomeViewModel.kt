@@ -2,6 +2,7 @@ package com.example.myapplicationv2.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.domain.repository.CategoryRepository
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
@@ -40,45 +41,47 @@ class HomeViewModel @Inject constructor(
     fun onEvent(event: HomeEvent) {
         when (event) {
             HomeEvent.DeleteItem -> TODO()
-            HomeEvent.SaveCategory -> TODO()
+            HomeEvent.SaveCategory -> saveCategory()
             HomeEvent.SaveItem -> saveItem()
-            is HomeEvent.onCheckBoxClick -> {}
+            is HomeEvent.onCheckBoxClick -> { /* your logic */ }
             is HomeEvent.onCategoryChange -> {
-                _state.update {
-                    it.copy(
-                        itemCategory = event.category
-                    )
-                }
+                _state.update { it.copy(itemCategoryId = event.categoryId) }
             }
             is HomeEvent.onNameChange -> {
-                _state.update {
-                    it.copy(
-                        itemName = event.name
-                    )
-                }
+                _state.update { it.copy(itemName = event.name) }
             }
-            is HomeEvent.onNewCategoryNameChange -> TODO()
+            is HomeEvent.onNewCategoryNameChange -> _state.update { it.copy(newCategoryName = event.name) }
             is HomeEvent.onQuantityChange -> {
-                _state.update {
-                    it.copy(
-                        itemQuantity = event.quantity
-                    )
-                }
+                _state.update { it.copy(itemQuantity = event.quantity) }
             }
         }
     }
 
     private fun saveItem() {
+        val s = state.value
+        val catId = s.itemCategoryId ?: return // or show a toast/snackbar through UI state
+        val qty = s.itemQuantity.toIntOrNull() ?: return
+
         viewModelScope.launch {
             toBuyItemRepository.upsertToBuyItem(
                 ToBuyItem(
-                    name = state.value.itemName,
-                    quantity = state.value.itemQuantity.toInt(),
-                    categoryId = state.value.itemCategory.toInt(),
+                    name = s.itemName,
+                    quantity = qty,
+                    categoryId = catId,
                     checked = false
                 )
             )
+            _state.update { it.copy(itemName = "", itemQuantity = "", itemCategoryId = null) }
+        }
+    }
 
+    private fun saveCategory() {
+        val name = state.value.newCategoryName.trim()
+        if (name.isBlank()) return
+
+        viewModelScope.launch {
+            categoryRepository.insertCategory(Category(name = name))
+            _state.update { it.copy(newCategoryName = "") }
         }
     }
 }
