@@ -20,12 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.model.ToBuyItem
 
 @Composable
 fun Itemcard(
     modifier: Modifier = Modifier,
     toBuyItem: ToBuyItem,
+    categories: List<Category>,
     onCheckBoxClick: () -> Unit,
     onClick: () -> Unit,
     onEditClick: () -> Unit,
@@ -65,7 +67,7 @@ fun Itemcard(
                 )
 
                 Text(
-                    text = toBuyItem.category,
+                    text = categories.find { it.id == toBuyItem.categoryId }?.name ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.width(80.dp)
                 )

@@ -7,20 +7,80 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.presentation.components.Itemcard
 import com.example.myapplicationv2.R
+import com.example.myapplicationv2.domain.model.Category
+import com.example.myapplicationv2.presentation.components.AddCategoryDialog
+import com.example.myapplicationv2.presentation.components.AddItemDialog
+import com.example.myapplicationv2.presentation.components.DeleteDialog
 
 @Composable
 fun HomeScreen() {
+
+    val viewModel: HomeViewModel = hiltViewModel()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val onEvent = viewModel::onEvent
+    var isAddItemDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var isDeleteDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var isCategoryDialogOpen by rememberSaveable { mutableStateOf(false) }
+
+    AddItemDialog(
+        isOpen = isAddItemDialogOpen,
+        name = state.itemName,
+        quantity = state.itemQuantity,
+        category = state.itemCategory,
+        onNameChange = { onEvent(HomeEvent.onNameChange(it)) },
+        onQuantityChange = { onEvent(HomeEvent.onQuantityChange(it)) },
+        onCategoryChange = { onEvent(HomeEvent.onCategoryChange(it)) },
+        onDismissRequest = { isAddItemDialogOpen = false },
+        onConfirmButtonClick = {
+            onEvent(HomeEvent.SaveItem)
+            isAddItemDialogOpen = false
+        }
+    )
+
+    AddCategoryDialog(
+        isOpen = isCategoryDialogOpen,
+        name = state.newCategoryName,
+        onNameChange = { },
+        onDismissRequest = { isCategoryDialogOpen = false },
+        onConfirmButtonClick = {
+            isCategoryDialogOpen = false
+        }
+    )
+
+    DeleteDialog(
+        isOpen = isDeleteDialogOpen,
+        onDismissRequest = { isDeleteDialogOpen = false },
+        onConfirmButtonClick = {
+            onEvent(HomeEvent.DeleteItem)
+            isDeleteDialogOpen = false
+        }
+    )
+
     Scaffold(
-        topBar = { HomeScreenTopBar() }
+        topBar = { HomeScreenTopBar() },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { isAddItemDialogOpen = true },
+                icon = { Icon(imageVector = Icons.Default.Add, contentDescription = "Add") },
+                text = { Text(text = "Add Item") },
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -45,7 +105,7 @@ fun HomeScreen() {
                 }
 
                 Button(
-                    onClick = { /* TODO: Add Category */ },
+                    onClick = { isCategoryDialogOpen = true },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
@@ -59,29 +119,12 @@ fun HomeScreen() {
             Spacer(modifier = Modifier.height(24.dp))
             ItemCardSection(
                 modifier = Modifier.fillMaxWidth(),
-//                toBuyItems = emptyList(),
-                toBuyItems = listOf(
-                    ToBuyItem(
-                        name = "Milk",
-                        category = "Dairy",
-                        quantity = 1,
-                        checked = true
-                    ),
-                    ToBuyItem(
-                        name = "Bread",
-                        category = "Bakery",
-                        quantity = 2,
-                        checked = false
-                    ),
-                    ToBuyItem(
-                        name = "Eggs",
-                        category = "Dairy",
-                        quantity = 6,
-                        checked = false
-                    )
-                ),
-                onCheckBoxClick = { },
-                onClick = { }
+                toBuyItems = state.toBuyItems,
+                categories = state.categories,
+                onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
+                onClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
+                onEditClick = { /* TODO: edit item */ },
+                onDeleteClick = { isDeleteDialogOpen = true }
             )
         }
     }
@@ -104,8 +147,11 @@ private fun HomeScreenTopBar() {
 private fun ItemCardSection(
     modifier: Modifier = Modifier,
     toBuyItems: List<ToBuyItem>,
+    categories: List<Category>,
     onCheckBoxClick: (ToBuyItem) -> Unit,
-    onClick: (ToBuyItem) -> Unit
+    onClick: (ToBuyItem) -> Unit,
+    onEditClick: (ToBuyItem) -> Unit = {},
+    onDeleteClick: (ToBuyItem) -> Unit = {}
 ) {
     Column (modifier = modifier){
         if (toBuyItems.isEmpty()) {
@@ -129,10 +175,11 @@ private fun ItemCardSection(
             toBuyItems.forEach { toBuyItem ->
                 Itemcard(
                     toBuyItem = toBuyItem,
+                    categories = categories,
                     onCheckBoxClick = { onCheckBoxClick(toBuyItem) },
                     onClick = { onClick(toBuyItem) },
-                    onEditClick = { /* TODO: Edit item */ },
-                    onDeleteClick = { /* TODO: Delete item */ }
+                    onEditClick = { onEditClick(toBuyItem) },
+                    onDeleteClick = { onDeleteClick(toBuyItem) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
