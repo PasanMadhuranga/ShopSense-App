@@ -12,7 +12,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationV2Theme {
+            MyApplicationV2Theme(dynamicColor = false) {
                 HomeScreen()
             }
         }
