@@ -116,8 +116,9 @@ fun HomeScreen() {
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
                     onClick = { /* TODO: Update Home */ },
@@ -129,18 +130,6 @@ fun HomeScreen() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(text = "Update Home")
-                }
-
-                Button(
-                    onClick = { isCategoryDialogOpen = true },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add New Category"
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "Add Category")
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -189,17 +178,19 @@ private fun ItemCardSection(
     onDeleteClick: (ToBuyItem) -> Unit = {}
 ) {
     if (toBuyItems.isEmpty()) {
-        Column(modifier = modifier) {
+        Column(
+            modifier = modifier
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Image(
-                modifier = Modifier
-                    .size(120.dp)
-                    .align(Alignment.CenterHorizontally),
+                modifier = Modifier.size(120.dp),
                 painter = painterResource(R.drawable.img_no_items),
                 contentDescription = "No Items"
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                modifier = Modifier.align(Alignment.CenterHorizontally),
                 text = "You don't have any items.\nClick the + button to add items.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,

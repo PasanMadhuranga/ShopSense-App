@@ -77,6 +77,38 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private val defaultCategories = listOf(
+        Category(name = "Supermarket"),
+        Category(name = "Pharmacy"),
+        Category(name = "Bakery"),
+        Category(name = "Butchery"),
+        Category(name = "Greengrocer"),
+        Category(name = "Electronics"),
+        Category(name = "Household"),
+        Category(name = "Stationery"),
+        Category(name = "Pet Store"),
+        Category(name = "Other")
+    )
+
+    init {
+        seedCategoriesIfEmpty()
+    }
+
+    private fun seedCategoriesIfEmpty() {
+        viewModelScope.launch {
+            val existing = categoryRepository.getAllCategories().firstOrNull() ?: emptyList()
+            if (existing.isEmpty()) {
+                try {
+                    categoryRepository.insertAll(defaultCategories)
+                } catch (e: Exception) {
+                    _snackbarEventFlow.emit(
+                        SnackBarEvent.ShowSnackBar("Failed to add default categories: ${e.message}")
+                    )
+                }
+            }
+        }
+    }
+
     private fun saveItem() {
         val s = state.value
         val quantity = s.itemQuantity.toIntOrNull()
