@@ -42,7 +42,6 @@ class HomeViewModel @Inject constructor(
     fun onEvent(event: HomeEvent) {
         when (event) {
             HomeEvent.DeleteItem -> deleteItem()
-            HomeEvent.SaveCategory -> saveCategory()
             HomeEvent.SaveItem -> saveItem()
 
             is HomeEvent.StartEdit -> {
@@ -68,8 +67,6 @@ class HomeViewModel @Inject constructor(
             is HomeEvent.onNameChange -> {
                 _state.update { it.copy(itemName = event.name) }
             }
-            is HomeEvent.onNewCategoryNameChange ->
-                _state.update { it.copy(newCategoryName = event.name) }
 
             is HomeEvent.onQuantityChange -> {
                 _state.update { it.copy(itemQuantity = event.quantity) }
@@ -186,28 +183,6 @@ class HomeViewModel @Inject constructor(
                 _snackbarEventFlow.emit(
                     SnackBarEvent.ShowSnackBar(
                         message = "Couldn't delete item. ${e.message}",
-                        duration = SnackbarDuration.Long
-                    )
-                )
-            }
-        }
-    }
-
-    private fun saveCategory() {
-        val name = state.value.newCategoryName.trim()
-        if (name.isBlank()) return
-
-        viewModelScope.launch {
-            try {
-                categoryRepository.insertCategory(Category(name = name))
-                _state.update { it.copy(newCategoryName = "") }
-                _snackbarEventFlow.emit(
-                    SnackBarEvent.ShowSnackBar(message = "Category added successfully.")
-                )
-            } catch (e: Exception) {
-                _snackbarEventFlow.emit(
-                    SnackBarEvent.ShowSnackBar(
-                        message = "Couldn't add category. ${e.message}",
                         duration = SnackbarDuration.Long
                     )
                 )

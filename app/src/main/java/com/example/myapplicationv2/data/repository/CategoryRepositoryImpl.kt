@@ -17,10 +17,6 @@ class CategoryRepositoryImpl @Inject constructor(
         return categoryDao.getCategoryById(id)
     }
 
-    override suspend fun insertCategory(category: Category) {
-        categoryDao.insertCategory(category)
-    }
-
     override suspend fun insertAll(categories: List<Category>) {
         categoryDao.insertAll(categories)
     }

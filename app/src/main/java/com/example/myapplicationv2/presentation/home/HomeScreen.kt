@@ -28,7 +28,6 @@ import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.presentation.components.Itemcard
 import com.example.myapplicationv2.R
 import com.example.myapplicationv2.domain.model.Category
-import com.example.myapplicationv2.presentation.components.AddCategoryDialog
 import com.example.myapplicationv2.presentation.components.AddEditItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
 import com.example.myapplicationv2.util.SnackBarEvent
@@ -45,7 +44,6 @@ fun HomeScreen() {
 
     var isAddItemDialogOpen by rememberSaveable { mutableStateOf(false) }
     var isDeleteDialogOpen by rememberSaveable { mutableStateOf(false) }
-    var isCategoryDialogOpen by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(key1 = true) {
@@ -75,17 +73,6 @@ fun HomeScreen() {
         onConfirmButtonClick = {
             onEvent(HomeEvent.SaveItem)
             isAddItemDialogOpen = false
-        }
-    )
-
-    AddCategoryDialog(
-        isOpen = isCategoryDialogOpen,
-        name = state.newCategoryName,
-        onNameChange = { onEvent(HomeEvent.onNewCategoryNameChange(it)) },
-        onDismissRequest = { isCategoryDialogOpen = false },
-        onConfirmButtonClick = {
-            onEvent(HomeEvent.SaveCategory)
-            isCategoryDialogOpen = false
         }
     )
 
@@ -200,10 +187,10 @@ private fun ItemCardSection(
     } else {
         val listState = rememberLazyListState()
         LazyColumn(
-            modifier = modifier, // parent will control the size
+            modifier = modifier,
             state = listState,
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(top = 0.dp, bottom = 88.dp) // keep clear of FAB
+            contentPadding = PaddingValues(top = 0.dp, bottom = 88.dp)
         ) {
             items(toBuyItems) { toBuyItem ->
                 Itemcard(

@@ -12,9 +12,6 @@ data class HomeState(
     val itemQuantity: String = "",
     val itemCategoryId: Int? = null,
 
-    // for creating categories
-    val newCategoryName: String = "",
-
     // editing support
     val editingItemId: Int? = null,
     // deletion support

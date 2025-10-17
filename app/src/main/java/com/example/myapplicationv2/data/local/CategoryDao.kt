@@ -15,9 +15,6 @@ interface CategoryDao {
     @Query("SELECT * FROM category WHERE id = :id")
     suspend fun getCategoryById(id: Int): Category?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCategory(category: Category)
-
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(categories: List<Category>)
 }
