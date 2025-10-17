@@ -9,13 +9,7 @@ import com.example.myapplicationv2.domain.repository.CategoryRepository
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
 import com.example.myapplicationv2.util.SnackBarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,17 +41,36 @@ class HomeViewModel @Inject constructor(
 
     fun onEvent(event: HomeEvent) {
         when (event) {
-            HomeEvent.DeleteItem -> TODO()
+            HomeEvent.DeleteItem -> deleteItem()
             HomeEvent.SaveCategory -> saveCategory()
             HomeEvent.SaveItem -> saveItem()
-            is HomeEvent.onCheckBoxClick -> { /* your logic */ }
+
+            is HomeEvent.StartEdit -> {
+                _state.update {
+                    it.copy(
+                        itemName = event.item.name,
+                        itemQuantity = event.item.quantity.toString(),
+                        itemCategoryId = event.item.categoryId,
+                        editingItemId = event.item.id
+                    )
+                }
+            }
+
+            is HomeEvent.StartDelete -> {
+                _state.update { it.copy(pendingDeleteItem = event.item) }
+            }
+
+            is HomeEvent.onCheckBoxClick -> toggleChecked(event.toBuyItem)
+
             is HomeEvent.onCategoryChange -> {
                 _state.update { it.copy(itemCategoryId = event.categoryId) }
             }
             is HomeEvent.onNameChange -> {
                 _state.update { it.copy(itemName = event.name) }
             }
-            is HomeEvent.onNewCategoryNameChange -> _state.update { it.copy(newCategoryName = event.name) }
+            is HomeEvent.onNewCategoryNameChange ->
+                _state.update { it.copy(newCategoryName = event.name) }
+
             is HomeEvent.onQuantityChange -> {
                 _state.update { it.copy(itemQuantity = event.quantity) }
             }
@@ -65,9 +78,10 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun saveItem() {
-        val quantity = state.value.itemQuantity.toIntOrNull()
-        val categoryId = state.value.itemCategoryId
-        val name = state.value.itemName.trim()
+        val s = state.value
+        val quantity = s.itemQuantity.toIntOrNull()
+        val categoryId = s.itemCategoryId
+        val name = s.itemName.trim()
 
         if (name.isBlank()) return
         if (quantity == null) return
@@ -75,22 +89,34 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                toBuyItemRepository.upsertToBuyItem(
-                    ToBuyItem(
-                        name = name,
-                        quantity = quantity,
-                        categoryId = categoryId,
-                        checked = false
-                    )
+                val item = ToBuyItem(
+                    id = s.editingItemId,
+                    name = name,
+                    quantity = quantity,
+                    categoryId = categoryId,
+                    checked = s.toBuyItems.firstOrNull { it.id == s.editingItemId }?.checked ?: false
                 )
-                _state.update { it.copy(itemName = "", itemQuantity = "", itemCategoryId = null) }
+
+                toBuyItemRepository.upsertToBuyItem(item)
+
+                _state.update {
+                    it.copy(
+                        itemName = "",
+                        itemQuantity = "",
+                        itemCategoryId = null,
+                        editingItemId = null
+                    )
+                }
+
                 _snackbarEventFlow.emit(
-                    SnackBarEvent.ShowSnackBar(message = "Item added successfully.")
+                    SnackBarEvent.ShowSnackBar(
+                        message = if (s.editingItemId == null) "Item added successfully." else "Item updated successfully."
+                    )
                 )
             } catch (e: Exception) {
                 _snackbarEventFlow.emit(
                     SnackBarEvent.ShowSnackBar(
-                        message = "Couldn't add item. ${e.message}",
+                        message = "Couldn't save item. ${e.message}",
                         duration = SnackbarDuration.Long
                     )
                 )
@@ -98,6 +124,42 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun toggleChecked(item: ToBuyItem) {
+        viewModelScope.launch {
+            try {
+                toBuyItemRepository.upsertToBuyItem(item.copy(checked = !item.checked))
+            } catch (e: Exception) {
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar(
+                        message = "Couldn't update item. ${e.message}",
+                        duration = SnackbarDuration.Long
+                    )
+                )
+            }
+        }
+    }
+
+    private fun deleteItem() {
+        val item = state.value.pendingDeleteItem ?: return
+        viewModelScope.launch {
+            try {
+                toBuyItemRepository.deleteToBuyItem(item)
+
+                _state.update { it.copy(pendingDeleteItem = null) }
+
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar(message = "Item deleted.")
+                )
+            } catch (e: Exception) {
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar(
+                        message = "Couldn't delete item. ${e.message}",
+                        duration = SnackbarDuration.Long
+                    )
+                )
+            }
+        }
+    }
 
     private fun saveCategory() {
         val name = state.value.newCategoryName.trim()

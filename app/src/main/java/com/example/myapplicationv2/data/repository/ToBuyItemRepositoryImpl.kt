@@ -14,7 +14,7 @@ class ToBuyItemRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getToBuyItemById(id: Int): ToBuyItem? {
-        TODO("Not yet implemented")
+        return toBuyItemDao.getToBuyItemById(id)
     }
 
     override suspend fun upsertToBuyItem(toBuyItem: ToBuyItem) {
@@ -22,6 +22,6 @@ class ToBuyItemRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteToBuyItem(toBuyItem: ToBuyItem) {
-        TODO("Not yet implemented")
+        toBuyItemDao.deleteToBuyItem(toBuyItem)
     }
 }

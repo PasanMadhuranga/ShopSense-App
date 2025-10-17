@@ -12,6 +12,9 @@ sealed class HomeEvent {
 
     data class onCheckBoxClick(val toBuyItem: ToBuyItem) : HomeEvent()
 
+    data class StartEdit(val item: ToBuyItem) : HomeEvent()
+
+    data class StartDelete(val item: ToBuyItem) : HomeEvent()
     data class onNameChange(val name: String) : HomeEvent()
 
     data class onQuantityChange(val quantity: String) : HomeEvent()

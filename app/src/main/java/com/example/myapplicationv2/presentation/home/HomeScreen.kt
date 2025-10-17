@@ -29,7 +29,7 @@ import com.example.myapplicationv2.presentation.components.Itemcard
 import com.example.myapplicationv2.R
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.presentation.components.AddCategoryDialog
-import com.example.myapplicationv2.presentation.components.AddItemDialog
+import com.example.myapplicationv2.presentation.components.AddEditItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
 import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
@@ -61,8 +61,9 @@ fun HomeScreen() {
         }
     }
 
-    AddItemDialog(
+    AddEditItemDialog(
         isOpen = isAddItemDialogOpen,
+        title = if (state.editingItemId == null) "Add Item" else "Edit Item",
         name = state.itemName,
         quantity = state.itemQuantity,
         categories = state.categories,
@@ -151,8 +152,14 @@ fun HomeScreen() {
                 categories = state.categories,
                 onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
                 onClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
-                onEditClick = { /* TODO: edit item */ },
-                onDeleteClick = { isDeleteDialogOpen = true }
+                onEditClick = { item ->
+                    onEvent(HomeEvent.StartEdit(item))
+                    isAddItemDialogOpen = true
+                },
+                onDeleteClick = { item ->
+                    onEvent(HomeEvent.StartDelete(item))
+                    isDeleteDialogOpen = true
+                }
             )
         }
     }

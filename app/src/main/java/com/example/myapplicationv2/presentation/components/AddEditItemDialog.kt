@@ -14,7 +14,7 @@ import com.example.myapplicationv2.domain.model.Category
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddItemDialog(
+fun AddEditItemDialog(
     isOpen: Boolean,
     title: String = "Add Item",
     name: String,
@@ -122,7 +122,7 @@ fun AddItemDialog(
             confirmButton = {
                 val enabled = nameError == null && quantityError == null && categoryError == null
                 TextButton(onClick = onConfirmButtonClick, enabled = enabled) {
-                    Text(text = "Add")
+                    Text(text = "Confirm")
                 }
             },
             dismissButton = {
