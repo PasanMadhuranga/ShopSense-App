@@ -2,6 +2,9 @@ package com.example.myapplicationv2.presentation.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -141,7 +144,9 @@ fun HomeScreen() {
             }
             Spacer(modifier = Modifier.height(24.dp))
             ItemCardSection(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 toBuyItems = state.toBuyItems,
                 categories = state.categories,
                 onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
@@ -176,8 +181,8 @@ private fun ItemCardSection(
     onEditClick: (ToBuyItem) -> Unit = {},
     onDeleteClick: (ToBuyItem) -> Unit = {}
 ) {
-    Column (modifier = modifier){
-        if (toBuyItems.isEmpty()) {
+    if (toBuyItems.isEmpty()) {
+        Column(modifier = modifier) {
             Image(
                 modifier = Modifier
                     .size(120.dp)
@@ -193,9 +198,16 @@ private fun ItemCardSection(
                 color = Color.Gray,
                 textAlign = TextAlign.Center
             )
-
-        } else {
-            toBuyItems.forEach { toBuyItem ->
+        }
+    } else {
+        val listState = rememberLazyListState()
+        LazyColumn(
+            modifier = modifier, // parent will control the size
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(top = 0.dp, bottom = 88.dp) // keep clear of FAB
+        ) {
+            items(toBuyItems) { toBuyItem ->
                 Itemcard(
                     toBuyItem = toBuyItem,
                     categories = categories,
@@ -204,7 +216,6 @@ private fun ItemCardSection(
                     onEditClick = { onEditClick(toBuyItem) },
                     onDeleteClick = { onDeleteClick(toBuyItem) }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
