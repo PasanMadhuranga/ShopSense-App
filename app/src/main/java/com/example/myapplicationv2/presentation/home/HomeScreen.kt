@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,16 +28,35 @@ import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.presentation.components.AddCategoryDialog
 import com.example.myapplicationv2.presentation.components.AddItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
+import com.example.myapplicationv2.util.SnackBarEvent
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun HomeScreen() {
 
     val viewModel: HomeViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
+
     val onEvent = viewModel::onEvent
+    val snackBarEvent = viewModel.snackbarEventFlow
+
     var isAddItemDialogOpen by rememberSaveable { mutableStateOf(false) }
     var isDeleteDialogOpen by rememberSaveable { mutableStateOf(false) }
     var isCategoryDialogOpen by rememberSaveable { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(key1 = true) {
+        snackBarEvent.collectLatest { event ->
+            when(event) {
+                is SnackBarEvent.ShowSnackBar -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        duration = event.duration
+                    )
+                }
+            }
+        }
+    }
 
     AddItemDialog(
         isOpen = isAddItemDialogOpen,
@@ -75,6 +95,7 @@ fun HomeScreen() {
     )
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = { HomeScreenTopBar() },
         floatingActionButton = {
             ExtendedFloatingActionButton(
