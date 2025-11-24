@@ -1,6 +1,9 @@
 package com.example.myapplicationv2.presentation.home
 
+import android.app.Application
+import android.content.Intent
 import androidx.compose.material3.SnackbarDuration
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplicationv2.data.local.prefs.HomePrefs
@@ -10,6 +13,7 @@ import com.example.myapplicationv2.domain.repository.CategoryRepository
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
 import com.example.myapplicationv2.geofence.GeofenceManager
 import com.example.myapplicationv2.location.LocationProvider
+import com.example.myapplicationv2.shopping.ShoppingModeService
 import com.example.myapplicationv2.util.SnackBarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -18,6 +22,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    private val app: Application,
     private val toBuyItemRepository: ToBuyItemRepository,
     private val categoryRepository: CategoryRepository,
     private val homePrefs: HomePrefs,
@@ -112,6 +117,20 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(isSelectingHomeOnMap = true) }
             }
 
+            HomeEvent.ToggleShoppingMode -> {
+                val active = state.value.isShoppingModeActive
+                if (active) stopShoppingMode()
+                else startShoppingMode()
+            }
+
+            HomeEvent.SetShoppingModeOn -> {
+                _state.update { it.copy(isShoppingModeActive = true) }
+            }
+
+            HomeEvent.SetShoppingModeOff -> {
+                _state.update { it.copy(isShoppingModeActive = false) }
+            }
+
             is HomeEvent.OnHomeLocationSelected -> {
                 // Update state and save via HomePrefs
                 val radius = state.value.homeRadiusMeters
@@ -153,6 +172,24 @@ class HomeViewModel @Inject constructor(
 
     init {
         seedCategoriesIfEmpty()
+    }
+
+    private fun startShoppingMode() {
+        _state.update { it.copy(isShoppingModeActive = true) }
+
+        val intent = Intent(app, ShoppingModeService::class.java).apply {
+            action = ShoppingModeService.ACTION_START
+        }
+        ContextCompat.startForegroundService(app, intent)
+    }
+
+    private fun stopShoppingMode() {
+        _state.update { it.copy(isShoppingModeActive = false) }
+
+        val intent = Intent(app, ShoppingModeService::class.java).apply {
+            action = ShoppingModeService.ACTION_STOP
+        }
+        app.startService(intent)
     }
 
     private fun useCurrentLocation() {

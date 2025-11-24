@@ -20,4 +20,7 @@ sealed class HomeEvent {
     data object DismissUpdateHome : HomeEvent()
     data object StartSelectHomeOnMap : HomeEvent()
     data class OnHomeLocationSelected(val lat: Double, val lng: Double) : HomeEvent()
+    data object ToggleShoppingMode : HomeEvent()
+    data object SetShoppingModeOn : HomeEvent()
+    data object SetShoppingModeOff : HomeEvent()
 }

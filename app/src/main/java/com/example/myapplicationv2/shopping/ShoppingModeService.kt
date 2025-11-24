@@ -71,6 +71,7 @@ class ShoppingModeService : Service() {
                 stopLocationUpdates()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+                sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
             }
             else -> {
                 Log.d("ShoppingModeService", "Unknown action: ${intent?.action}")
@@ -231,9 +232,7 @@ class ShoppingModeService : Service() {
             .setContentText("Shopping Mode is active")
             .setOngoing(true)                      // keeps it stuck in the shade
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            // Tapping the notification body also turns Shopping Mode off
             .setContentIntent(stopPendingIntent)
-            // Action button labelled "Off"
             .addAction(
                 R.mipmap.ic_launcher,              // or a custom "stop" icon if you add one
                 "Off",

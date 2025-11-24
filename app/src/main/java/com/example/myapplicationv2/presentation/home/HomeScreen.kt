@@ -1,6 +1,9 @@
 package com.example.myapplicationv2.presentation.home
 
 import android.Manifest
+import android.content.Context
+import android.content.IntentFilter
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +42,7 @@ import com.example.myapplicationv2.presentation.components.AddEditItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
 import com.example.myapplicationv2.presentation.components.HomeLocationPickerScreen
 import com.example.myapplicationv2.presentation.components.UpdateHomeDialog
+import com.example.myapplicationv2.shopping.ShoppingModeStatusReceiver
 import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
 
@@ -55,6 +60,33 @@ fun HomeScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val shoppingStoppedReceiver = remember {
+        ShoppingModeStatusReceiver {
+            onEvent(HomeEvent.SetShoppingModeOff)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val filter = IntentFilter("SHOPPING_MODE_STOPPED")
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Android 13+ requires the flags parameter, and for our custom
+            // in-app broadcast we mark it as NOT_EXPORTED
+            context.registerReceiver(
+                shoppingStoppedReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(shoppingStoppedReceiver, filter)
+        }
+
+        onDispose {
+            context.unregisterReceiver(shoppingStoppedReceiver)
+        }
+    }
+
 
     // Launcher to ask for location permission
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -170,6 +202,21 @@ fun HomeScreen() {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(text = "Update Home")
                 }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Shopping Mode", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = state.isShoppingModeActive,
+                    onCheckedChange = {
+                        onEvent(HomeEvent.ToggleShoppingMode)
+                    }
+                )
             }
             Spacer(modifier = Modifier.height(24.dp))
             ItemCardSection(

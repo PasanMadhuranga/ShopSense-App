@@ -28,5 +28,8 @@ data class HomeState(
     val isLocationLoading: Boolean = false,
 
     // temp UI state for "Select Home" dialog
-    val isSelectingHomeOnMap: Boolean = false
+    val isSelectingHomeOnMap: Boolean = false,
+
+    // Shopping Mode
+    val isShoppingModeActive: Boolean = false
 )
