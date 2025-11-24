@@ -1,6 +1,6 @@
 package com.example.myapplicationv2.data.repository
 
-import com.example.myapplicationv2.data.local.ToBuyItemDao
+import com.example.myapplicationv2.data.local.db.ToBuyItemDao
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
 import kotlinx.coroutines.flow.Flow

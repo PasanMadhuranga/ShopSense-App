@@ -3,10 +3,12 @@ package com.example.myapplicationv2.presentation.home
 import androidx.compose.material3.SnackbarDuration
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplicationv2.data.local.prefs.HomePrefs
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.domain.repository.CategoryRepository
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
+import com.example.myapplicationv2.location.LocationProvider
 import com.example.myapplicationv2.util.SnackBarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -16,8 +18,24 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val toBuyItemRepository: ToBuyItemRepository,
-    private val categoryRepository: CategoryRepository
-): ViewModel() {
+    private val categoryRepository: CategoryRepository,
+    private val homePrefs: HomePrefs,
+    private val locationProvider: LocationProvider
+) : ViewModel() {
+
+    init {
+        viewModelScope.launch {
+            homePrefs.homeFlow.collect { saved ->
+                _state.update {
+                    it.copy(
+                        homeLat = saved?.lat,
+                        homeLng = saved?.lng,
+                        homeRadiusMeters = saved?.radiusMeters ?: it.homeRadiusMeters
+                    )
+                }
+            }
+        }
+    }
 
     private val _state = MutableStateFlow(HomeState())
 
@@ -71,6 +89,22 @@ class HomeViewModel @Inject constructor(
             is HomeEvent.onQuantityChange -> {
                 _state.update { it.copy(itemQuantity = event.quantity) }
             }
+
+            HomeEvent.StartUpdateHome -> _state.update { it.copy(
+                isUpdatingHome = true,
+                tempRadiusMeters = it.homeRadiusMeters
+            )}
+
+            is HomeEvent.OnTempRadiusChange ->
+                _state.update { it.copy(tempRadiusMeters = event.meters) }
+
+            HomeEvent.UseCurrentLocation -> useCurrentLocation()
+
+            HomeEvent.SaveHome -> saveHome()
+
+            HomeEvent.ClearHome -> clearHome()
+
+            HomeEvent.DismissUpdateHome -> _state.update { it.copy(isUpdatingHome = false, isLocationLoading = false) }
         }
     }
 
@@ -90,6 +124,55 @@ class HomeViewModel @Inject constructor(
     init {
         seedCategoriesIfEmpty()
     }
+
+    private fun useCurrentLocation() {
+        viewModelScope.launch {
+            try {
+                _state.update { it.copy(isLocationLoading = true) }
+                val loc = locationProvider.getLastLocationOrNull()
+                if (loc == null) {
+                    _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Location unavailable. Open Maps or try outside."))
+                } else {
+                    _state.update { it.copy(homeLat = loc.latitude, homeLng = loc.longitude) }
+                    _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Pinned to current location."))
+                }
+            } catch (e: Exception) {
+                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Failed to get location: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isLocationLoading = false) }
+            }
+        }
+    }
+
+    private fun saveHome() {
+        val s = state.value
+        val lat = s.homeLat
+        val lng = s.homeLng
+        if (lat == null || lng == null) {
+            viewModelScope.launch {
+                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Pick a location first."))
+            }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                homePrefs.saveHome(lat, lng, s.tempRadiusMeters)
+                _state.update { it.copy(isUpdatingHome = false, homeRadiusMeters = s.tempRadiusMeters) }
+                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Home updated."))
+            } catch (e: Exception) {
+                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Failed to save home: ${e.message}"))
+            }
+        }
+    }
+
+    private fun clearHome() {
+        viewModelScope.launch {
+            homePrefs.clearHome()
+            _state.update { it.copy(homeLat = null, homeLng = null) }
+            _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Home cleared."))
+        }
+    }
+
 
     private fun seedCategoriesIfEmpty() {
         viewModelScope.launch {

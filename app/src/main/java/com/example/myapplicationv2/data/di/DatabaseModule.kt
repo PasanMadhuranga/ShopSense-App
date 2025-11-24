@@ -2,9 +2,9 @@ package com.example.myapplicationv2.data.di
 
 import android.app.Application
 import androidx.room.Room
-import com.example.myapplicationv2.data.local.AppDatabase
-import com.example.myapplicationv2.data.local.CategoryDao
-import com.example.myapplicationv2.data.local.ToBuyItemDao
+import com.example.myapplicationv2.data.local.db.AppDatabase
+import com.example.myapplicationv2.data.local.db.CategoryDao
+import com.example.myapplicationv2.data.local.db.ToBuyItemDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

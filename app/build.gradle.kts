@@ -83,4 +83,10 @@ dependencies {
 
     // Desugaring
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    // FusedLocationProvider
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // DataStore for home prefs
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 }

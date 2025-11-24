@@ -1,5 +1,11 @@
 package com.example.myapplicationv2.presentation.home
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +36,7 @@ import com.example.myapplicationv2.R
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.presentation.components.AddEditItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
+import com.example.myapplicationv2.presentation.components.UpdateHomeDialog
 import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
 
@@ -45,6 +52,25 @@ fun HomeScreen() {
     var isAddItemDialogOpen by rememberSaveable { mutableStateOf(false) }
     var isDeleteDialogOpen by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Launcher to ask for location permission
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+        if (fineGranted || coarseGranted) {
+            // Now we actually try to get the location
+            onEvent(HomeEvent.UseCurrentLocation)
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar("Location permission is required to use current location.")
+            }
+        }
+    }
 
     LaunchedEffect(key1 = true) {
         snackBarEvent.collectLatest { event ->
@@ -85,6 +111,26 @@ fun HomeScreen() {
         }
     )
 
+    UpdateHomeDialog(
+        isOpen = state.isUpdatingHome,
+        currentLat = state.homeLat,
+        currentLng = state.homeLng,
+        tempRadius = state.tempRadiusMeters,
+        isLoading = state.isLocationLoading,
+        onUseCurrentLocation = {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        },
+        onTempRadiusChange = { onEvent(HomeEvent.OnTempRadiusChange(it)) },
+        onSave = { onEvent(HomeEvent.SaveHome) },
+        onClear = { onEvent(HomeEvent.ClearHome) },
+        onDismiss = { onEvent(HomeEvent.DismissUpdateHome) }
+    )
+
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = { HomeScreenTopBar() },
@@ -108,7 +154,7 @@ fun HomeScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = { /* TODO: Update Home */ },
+                    onClick = { onEvent(HomeEvent.StartUpdateHome) },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(

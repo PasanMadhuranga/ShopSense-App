@@ -1,9 +1,7 @@
-package com.example.myapplicationv2.data.local
+package com.example.myapplicationv2.data.local.db
 
 import androidx.room.Dao
 import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
 import com.example.myapplicationv2.domain.model.ToBuyItem

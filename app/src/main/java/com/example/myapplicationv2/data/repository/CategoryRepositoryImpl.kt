@@ -1,6 +1,6 @@
 package com.example.myapplicationv2.data.repository
 
-import com.example.myapplicationv2.data.local.CategoryDao
+import com.example.myapplicationv2.data.local.db.CategoryDao
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.repository.CategoryRepository
 import kotlinx.coroutines.flow.Flow

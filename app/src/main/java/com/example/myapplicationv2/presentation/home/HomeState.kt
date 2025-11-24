@@ -15,5 +15,15 @@ data class HomeState(
     // editing support
     val editingItemId: Int? = null,
     // deletion support
-    val pendingDeleteItem: ToBuyItem? = null
+    val pendingDeleteItem: ToBuyItem? = null,
+
+    // Home (display + dialog)
+    val homeLat: Double? = null,
+    val homeLng: Double? = null,
+    val homeRadiusMeters: Int = 200, // default
+
+    // temp UI state for "Update Home" dialog
+    val tempRadiusMeters: Int = 200,
+    val isUpdatingHome: Boolean = false,
+    val isLocationLoading: Boolean = false
 )
