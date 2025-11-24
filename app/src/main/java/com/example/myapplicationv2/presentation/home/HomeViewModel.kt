@@ -8,6 +8,7 @@ import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.domain.repository.CategoryRepository
 import com.example.myapplicationv2.domain.repository.ToBuyItemRepository
+import com.example.myapplicationv2.geofence.GeofenceManager
 import com.example.myapplicationv2.location.LocationProvider
 import com.example.myapplicationv2.util.SnackBarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,7 +21,8 @@ class HomeViewModel @Inject constructor(
     private val toBuyItemRepository: ToBuyItemRepository,
     private val categoryRepository: CategoryRepository,
     private val homePrefs: HomePrefs,
-    private val locationProvider: LocationProvider
+    private val locationProvider: LocationProvider,
+    private val geofenceManager: GeofenceManager
 ) : ViewModel() {
 
     init {
@@ -185,10 +187,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 homePrefs.saveHome(lat, lng, s.tempRadiusMeters)
-                _state.update { it.copy(isUpdatingHome = false, homeRadiusMeters = s.tempRadiusMeters) }
-                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Home updated."))
+                geofenceManager.setHomeGeofence(lat, lng, s.tempRadiusMeters)
+
+                _state.update {
+                    it.copy(
+                        isUpdatingHome = false,
+                        homeRadiusMeters = s.tempRadiusMeters
+                    )
+                }
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar("Home updated.")
+                )
             } catch (e: Exception) {
-                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Failed to save home: ${e.message}"))
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar("Failed to save home: ${e.message}")
+                )
             }
         }
     }
@@ -196,6 +209,7 @@ class HomeViewModel @Inject constructor(
     private fun clearHome() {
         viewModelScope.launch {
             homePrefs.clearHome()
+            geofenceManager.clearHomeGeofence()
             _state.update { it.copy(homeLat = null, homeLng = null) }
             _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Home cleared."))
         }

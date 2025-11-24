@@ -2,12 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Location permissions: add them here, under <manifest>, above <application> -->
+    <!-- Location permissions -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <!-- For later, when you actually implement background geofencing:
+
+    <!-- Needed so geofences can trigger while the app is in background (Android 10+) -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    -->
+
+    <!-- Needed for posting notifications on Android 13+ -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"
+        tools:targetApi="33" />
+
+    <!-- Foreground service base + specific location type (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
+        tools:targetApi="34" />
 
     <application
         android:name=".ShopSenseApp"
@@ -20,10 +31,27 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplicationV2">
 
+        <!-- Google Maps API key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="@string/google_maps_key" />
 
+        <!-- Geofence receivers -->
+        <receiver
+            android:name=".geofence.GeofenceReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".geofence.ShoppingModeActionReceiver"
+            android:exported="false" />
+
+        <!-- Shopping mode foreground service -->
+        <service
+            android:name=".shopping.ShoppingModeService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- Main activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

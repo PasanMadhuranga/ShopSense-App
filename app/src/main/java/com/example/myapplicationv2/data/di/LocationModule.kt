@@ -1,6 +1,7 @@
 package com.example.myapplicationv2.data.di
 
 import android.content.Context
+import com.example.myapplicationv2.geofence.GeofenceManager
 import com.example.myapplicationv2.location.LocationProvider
 import dagger.Module
 import dagger.Provides
@@ -18,4 +19,10 @@ object LocationModule {
     fun provideLocationProvider(
         @ApplicationContext ctx: Context
     ): LocationProvider = LocationProvider(ctx)
+
+    @Provides
+    @Singleton
+    fun provideGeofenceManager(
+        @ApplicationContext ctx: Context
+    ): GeofenceManager = GeofenceManager(ctx)
 }
