@@ -36,6 +36,7 @@ import com.example.myapplicationv2.R
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.presentation.components.AddEditItemDialog
 import com.example.myapplicationv2.presentation.components.DeleteDialog
+import com.example.myapplicationv2.presentation.components.HomeLocationPickerScreen
 import com.example.myapplicationv2.presentation.components.UpdateHomeDialog
 import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
@@ -125,11 +126,16 @@ fun HomeScreen() {
                 )
             )
         },
+        onPickOnMap = {
+            onEvent(HomeEvent.DismissUpdateHome)
+            onEvent(HomeEvent.StartSelectHomeOnMap)
+        },
         onTempRadiusChange = { onEvent(HomeEvent.OnTempRadiusChange(it)) },
         onSave = { onEvent(HomeEvent.SaveHome) },
         onClear = { onEvent(HomeEvent.ClearHome) },
         onDismiss = { onEvent(HomeEvent.DismissUpdateHome) }
     )
+
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -185,6 +191,20 @@ fun HomeScreen() {
             )
         }
     }
+
+    if (state.isSelectingHomeOnMap) {
+        HomeLocationPickerScreen(
+            initialLat = state.homeLat,
+            initialLng = state.homeLng,
+            onConfirm = { lat, lng ->
+                onEvent(HomeEvent.OnHomeLocationSelected(lat, lng))
+            },
+            onCancel = {
+                onEvent(HomeEvent.DismissUpdateHome)
+            }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

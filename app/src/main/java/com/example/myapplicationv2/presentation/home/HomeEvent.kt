@@ -18,4 +18,6 @@ sealed class HomeEvent {
     data object SaveHome : HomeEvent()
     data object ClearHome : HomeEvent()
     data object DismissUpdateHome : HomeEvent()
+    data object StartSelectHomeOnMap : HomeEvent()
+    data class OnHomeLocationSelected(val lat: Double, val lng: Double) : HomeEvent()
 }

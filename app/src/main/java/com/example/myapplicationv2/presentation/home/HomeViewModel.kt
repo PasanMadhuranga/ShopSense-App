@@ -105,6 +105,34 @@ class HomeViewModel @Inject constructor(
             HomeEvent.ClearHome -> clearHome()
 
             HomeEvent.DismissUpdateHome -> _state.update { it.copy(isUpdatingHome = false, isLocationLoading = false) }
+
+            HomeEvent.StartSelectHomeOnMap -> {
+                _state.update { it.copy(isSelectingHomeOnMap = true) }
+            }
+
+            is HomeEvent.OnHomeLocationSelected -> {
+                // Update state and save via HomePrefs
+                val radius = state.value.homeRadiusMeters
+                viewModelScope.launch {
+                    try {
+                        homePrefs.saveHome(event.lat, event.lng, radius)
+                        _state.update {
+                            it.copy(
+                                homeLat = event.lat,
+                                homeLng = event.lng,
+                                isSelectingHomeOnMap = false
+                            )
+                        }
+                        _snackbarEventFlow.emit(
+                            SnackBarEvent.ShowSnackBar("Home updated from map.")
+                        )
+                    } catch (e: Exception) {
+                        _snackbarEventFlow.emit(
+                            SnackBarEvent.ShowSnackBar("Failed to save home: ${e.message}")
+                        )
+                    }
+                }
+            }
         }
     }
 

@@ -15,6 +15,7 @@ fun UpdateHomeDialog(
     tempRadius: Int,
     isLoading: Boolean,
     onUseCurrentLocation: () -> Unit,
+    onPickOnMap: () -> Unit,
     onTempRadiusChange: (Int) -> Unit,
     onSave: () -> Unit,
     onClear: () -> Unit,
@@ -31,12 +32,20 @@ fun UpdateHomeDialog(
                         "Home: (%.5f, %.5f)".format(currentLat, currentLng)
                     else "Home not set"
                 )
+
+                // current location button
                 Button(
                     onClick = onUseCurrentLocation,
                     enabled = !isLoading
                 ) {
                     Text(if (isLoading) "Getting location..." else "Use current location")
                 }
+
+                // map selection button
+                OutlinedButton(onClick = onPickOnMap) {
+                    Text("Pick on map")
+                }
+
                 Spacer(Modifier.height(8.dp))
                 Text("Radius (meters): $tempRadius")
                 Slider(
@@ -47,9 +56,7 @@ fun UpdateHomeDialog(
                 )
             }
         },
-        confirmButton = {
-            TextButton(onClick = onSave) { Text("Save") }
-        },
+        confirmButton = { TextButton(onClick = onSave) { Text("Save") } },
         dismissButton = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

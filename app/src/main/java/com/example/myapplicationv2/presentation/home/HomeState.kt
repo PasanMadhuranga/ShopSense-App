@@ -25,5 +25,8 @@ data class HomeState(
     // temp UI state for "Update Home" dialog
     val tempRadiusMeters: Int = 200,
     val isUpdatingHome: Boolean = false,
-    val isLocationLoading: Boolean = false
+    val isLocationLoading: Boolean = false,
+
+    // temp UI state for "Select Home" dialog
+    val isSelectingHomeOnMap: Boolean = false
 )
