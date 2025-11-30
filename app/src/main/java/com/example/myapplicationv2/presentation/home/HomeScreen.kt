@@ -45,11 +45,11 @@ import com.example.myapplicationv2.shopping.ShoppingModeStatusReceiver
 import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     initialHighlightIds: List<Int> = emptyList()
 ) {
-
     val viewModel: HomeViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -75,6 +75,23 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // Category filter state (null = all)
+    var selectedCategoryId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
+
+    val selectedCategoryName = selectedCategoryId?.let { id ->
+        state.categories.find { it.id == id }?.name
+    } ?: "All categories"
+
+    // Filter items according to selected category
+    val filteredItems = remember(state.toBuyItems, selectedCategoryId) {
+        if (selectedCategoryId == null) {
+            state.toBuyItems
+        } else {
+            state.toBuyItems.filter { it.categoryId == selectedCategoryId }
+        }
+    }
 
     // Receiver that listens for SHOPPING_MODE_STOPPED from the service
     val shoppingStoppedReceiver = remember {
@@ -194,6 +211,7 @@ fun HomeScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            // Update home button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -212,27 +230,103 @@ fun HomeScreen(
                     Text(text = "Update Home")
                 }
             }
+
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
+
+            // Shopping mode toggle
+            // Shopping mode section with light red background
+            val shoppingModeColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Shopping Mode", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = state.isShoppingModeActive,
-                    onCheckedChange = {
-                        onEvent(HomeEvent.ToggleShoppingMode)
-                    }
+                colors = CardDefaults.cardColors(
+                    containerColor = shoppingModeColor
                 )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Shopping Mode",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Get nearby store suggestions based on your list",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = state.isShoppingModeActive,
+                        onCheckedChange = {
+                            onEvent(HomeEvent.ToggleShoppingMode)
+                        }
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Category filter dropdown
+            ExposedDropdownMenuBox(
+                expanded = isCategoryDropdownExpanded,
+                onExpandedChange = { isCategoryDropdownExpanded = !isCategoryDropdownExpanded },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                OutlinedTextField(
+                    value = selectedCategoryName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Filter by category") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = isCategoryDropdownExpanded)
+                    },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = isCategoryDropdownExpanded,
+                    onDismissRequest = { isCategoryDropdownExpanded = false }
+                ) {
+                    // "All categories" item
+                    DropdownMenuItem(
+                        text = { Text("All categories") },
+                        onClick = {
+                            selectedCategoryId = null
+                            isCategoryDropdownExpanded = false
+                        }
+                    )
+                    // One entry per category
+                    state.categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name) },
+                            onClick = {
+                                selectedCategoryId = category.id
+                                isCategoryDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             ItemCardSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                toBuyItems = state.toBuyItems,
+                toBuyItems = filteredItems,
                 categories = state.categories,
                 highlightedIds = if (isHighlighting) highlightedIds else emptySet(),
                 onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
