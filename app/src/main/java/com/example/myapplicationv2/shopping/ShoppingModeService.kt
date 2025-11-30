@@ -53,6 +53,7 @@ class ShoppingModeService : Service() {
     private val httpClient = OkHttpClient()
     private var lastSearchLat: Double? = null
     private var lastSearchLng: Double? = null
+    private var lastLocation: Location? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -109,7 +110,7 @@ class ShoppingModeService : Service() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
-                handleNewLocation(location.latitude, location.longitude)
+                handleNewLocation(location)
             }
         }
     }
@@ -151,23 +152,25 @@ class ShoppingModeService : Service() {
         }
     }
 
-    private fun handleNewLocation(lat: Double, lng: Double) {
-        Log.d("ShoppingModeService", "New location: $lat,$lng")
+    private fun handleNewLocation(location: Location) {
+        val lat = location.latitude
+        val lng = location.longitude
+        val speedMps = location.speed        // may be 0 or unreliable at very low speed
+
+        Log.d(
+            "ShoppingModeService",
+            "New location: $lat,$lng speed=${speedMps} m/s"
+        )
 
         serviceScope.launch {
             val prevLat = lastSearchLat
             val prevLng = lastSearchLng
 
-            // If we have a previous search location, check distance
+            // Distance gating (same as your current logic)
             if (prevLat != null && prevLng != null) {
                 val dist = distanceMeters(prevLat, prevLng, lat, lng)
+                Log.d("ShoppingModeService", "Distance from last search location: $dist m")
 
-                Log.d(
-                    "ShoppingModeService",
-                    "Distance from last search location: $dist m"
-                )
-
-                // If distance is less than MIN_DISTANCE_METERS, you can skip
                 if (dist < MIN_DISTANCE_METERS) {
                     Log.d(
                         "ShoppingModeService",
@@ -177,17 +180,52 @@ class ShoppingModeService : Service() {
                 }
             }
 
-            // Now we are allowed to search
-            performNearbySearchAndNotify(lat, lng)
+            // Compute movement bearing only if we have a previous location and reasonable speed
+            val previousLocation = lastLocation
+            val movementBearing: Float? =
+                if (previousLocation != null && speedMps >= SPEED_MIN_FOR_HEADING) {
+                    previousLocation.bearingTo(location)   // 0..360 degrees
+                } else {
+                    null
+                }
 
-            // Update last search markers
+            Log.d(
+                "ShoppingModeService",
+                "Computed movementBearing=$movementBearing"
+            )
+
+            val radiusMeters = computeSearchRadiusMeters(speedMps)
+
+            performNearbySearchAndNotify(
+                lat = lat,
+                lng = lng,
+                radiusMeters = radiusMeters,
+                movementBearing = movementBearing
+            )
+
+            // Update markers for next step
             lastSearchLat = lat
             lastSearchLng = lng
+            lastLocation = Location(location)
         }
     }
 
-    private suspend fun performNearbySearchAndNotify(lat: Double, lng: Double) {
-        Log.d("ShoppingModeService", "performNearbySearchAndNotify() called")
+    private fun computeSearchRadiusMeters(speedMps: Float): Int {
+        val s = if (speedMps.isNaN() || speedMps < 0f) 0f else speedMps
+        return when {
+            s < 1f -> 150
+            s < 3f -> 300
+            else -> 500
+        }
+    }
+
+    private suspend fun performNearbySearchAndNotify(
+        lat: Double,
+        lng: Double,
+        radiusMeters: Int,
+        movementBearing: Float?
+    ) {
+        Log.d("ShoppingModeService", "performNearbySearchAndNotify() called with radius=$radiusMeters")
 
         val items: List<ToBuyItem> = toBuyItemRepository
             .getAllToBuyItems()
@@ -239,7 +277,14 @@ class ShoppingModeService : Service() {
                 continue
             }
 
-            val place = searchClosestPlace(lat, lng, placesType)
+            val place = searchClosestPlace(
+                lat = lat,
+                lng = lng,
+                type = placesType,
+                radiusMeters = radiusMeters,
+                movementBearingDeg = movementBearing
+            )
+
             if (place == null) {
                 Log.d(
                     "ShoppingModeService",
@@ -261,7 +306,7 @@ class ShoppingModeService : Service() {
                 placeName = place.name,
                 distanceMeters = place.distanceMeters,
                 itemNames = itemNames,
-                itemIds = catItems.mapNotNull { it.id },   // <- add this
+                itemIds = catItems.mapNotNull { it.id },
                 placeLat = place.lat,
                 placeLng = place.lng
             )
@@ -300,7 +345,8 @@ class ShoppingModeService : Service() {
         lat: Double,
         lng: Double,
         type: String,
-        radiusMeters: Int = 200
+        radiusMeters: Int = 200,
+        movementBearingDeg: Float? = null
     ): NearbyPlace? {
         val apiKey = getString(R.string.google_places_web_key)
         val url = "https://places.googleapis.com/v1/places:searchNearby"
@@ -372,6 +418,27 @@ class ShoppingModeService : Service() {
                         val dist = distanceMeters(lat, lng, placeLat, placeLng).toInt()
                         Log.d("ShoppingModeService", "Candidate place: $name, distance=$dist m")
 
+                        if (movementBearingDeg != null) {
+                            val bearingToPlace = bearingBetween(lat, lng, placeLat, placeLng)
+                            val angleDiff = smallestAngleDiff(movementBearingDeg, bearingToPlace)
+
+                            Log.d(
+                                "ShoppingModeService",
+                                "Candidate: $name, dist=$dist, bearingToPlace=$bearingToPlace, " +
+                                        "movementBearing=$movementBearingDeg, angleDiff=$angleDiff"
+                            )
+
+                            if (angleDiff > HEADING_MAX_ANGLE_DEG) {
+                                // This place is mostly to the side or behind the user, skip it
+                                continue
+                            }
+                        } else {
+                            Log.d(
+                                "ShoppingModeService",
+                                "Candidate: $name, dist=$dist (no heading filter applied)"
+                            )
+                        }
+
                         if (best == null || dist < best!!.distanceMeters) {
                             best = NearbyPlace(
                                 name = name,
@@ -390,6 +457,29 @@ class ShoppingModeService : Service() {
                 null
             }
         }
+    }
+
+    private fun bearingBetween(
+        lat1: Double,
+        lng1: Double,
+        lat2: Double,
+        lng2: Double
+    ): Float {
+        val result = FloatArray(2)
+        // result[1] will be the initial bearing from (lat1,lng1) to (lat2,lng2)
+        Location.distanceBetween(lat1, lng1, lat2, lng2, result)
+        return result[1]
+    }
+
+    /**
+     * Returns the smallest absolute angle difference between two headings in degrees.
+     * Both inputs are in degrees, 0..360.
+     */
+    private fun smallestAngleDiff(aDeg: Float, bDeg: Float): Float {
+        var diff = (aDeg - bDeg) % 360f
+        if (diff < -180f) diff += 360f
+        if (diff > 180f) diff -= 360f
+        return kotlin.math.abs(diff)
     }
 
     private fun distanceMeters(
@@ -519,7 +609,8 @@ class ShoppingModeService : Service() {
             "com.example.myapplicationv2.EXTRA_HIGHLIGHT_FROM_NOTIFICATION"
         const val EXTRA_HIGHLIGHT_ITEM_IDS =
             "com.example.myapplicationv2.EXTRA_HIGHLIGHT_ITEM_IDS"
-
+        const val HEADING_MAX_ANGLE_DEG = 60f
+        const val SPEED_MIN_FOR_HEADING = 0.5f
     }
 
     private data class NearbyPlace(

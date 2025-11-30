@@ -52,7 +52,7 @@ fun Itemcard(
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 500,
+                durationMillis = 700,
                 easing = LinearEasing
             ),
             repeatMode = RepeatMode.Reverse
