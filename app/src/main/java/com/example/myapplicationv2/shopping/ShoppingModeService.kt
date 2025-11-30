@@ -261,6 +261,7 @@ class ShoppingModeService : Service() {
                 placeName = place.name,
                 distanceMeters = place.distanceMeters,
                 itemNames = itemNames,
+                itemIds = catItems.mapNotNull { it.id },   // <- add this
                 placeLat = place.lat,
                 placeLng = place.lng
             )
@@ -421,6 +422,7 @@ class ShoppingModeService : Service() {
         placeName: String,
         distanceMeters: Int,
         itemNames: List<String>,
+        itemIds: List<Int>,
         placeLat: Double,
         placeLng: Double
     ) {
@@ -431,12 +433,29 @@ class ShoppingModeService : Service() {
         }
 
         val bigText = buildString {
-            append("There is a $categoryName in $distanceMeters meters ($placeName).\n")
+            append("$placeName is $distanceMeters meters away.\n")
             append("You can buy:\n")
             append(bulletItems)
         }
 
         Log.d("ShoppingModeService", "Showing nearby-store notification: $bigText")
+
+        // Intent to open the app and highlight the items
+        val launchIntent = Intent(this, com.example.myapplicationv2.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_HIGHLIGHT_FROM_NOTIFICATION, true)
+            putIntegerArrayListExtra(
+                EXTRA_HIGHLIGHT_ITEM_IDS,
+                ArrayList(itemIds)
+            )
+        }
+
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            1,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         // navigation intent code stays the same...
         val navUri = Uri.parse("google.navigation:q=$placeLat,$placeLng&mode=d")
@@ -463,10 +482,11 @@ class ShoppingModeService : Service() {
         val notification = NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Nearby $categoryName")
-            .setContentText("There is a $categoryName in $distanceMeters meters.") // short text for collapsed view
+            .setContentText("$placeName is $distanceMeters meters away")
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setContentIntent(contentPendingIntent)
             .addAction(
                 R.mipmap.ic_launcher,
                 "Show direction",
@@ -493,9 +513,13 @@ class ShoppingModeService : Service() {
         const val ACTION_START = "com.example.myapplicationv2.shopping.ACTION_START"
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
         const val NOTIFICATION_ID = 2001
-
         private const val UPDATE_INTERVAL_MS: Long = 10 * 1000   // every 10 seconds
         private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
+        const val EXTRA_HIGHLIGHT_FROM_NOTIFICATION =
+            "com.example.myapplicationv2.EXTRA_HIGHLIGHT_FROM_NOTIFICATION"
+        const val EXTRA_HIGHLIGHT_ITEM_IDS =
+            "com.example.myapplicationv2.EXTRA_HIGHLIGHT_ITEM_IDS"
+
     }
 
     private data class NearbyPlace(

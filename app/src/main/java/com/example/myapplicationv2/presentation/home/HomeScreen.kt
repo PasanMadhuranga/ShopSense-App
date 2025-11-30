@@ -46,10 +46,26 @@ import com.example.myapplicationv2.util.SnackBarEvent
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(
+    initialHighlightIds: List<Int> = emptyList()
+) {
 
     val viewModel: HomeViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Highlight state for items opened from notification
+    var highlightedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var isHighlighting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialHighlightIds) {
+        if (initialHighlightIds.isNotEmpty()) {
+            highlightedIds = initialHighlightIds.toSet()
+            isHighlighting = true
+            kotlinx.coroutines.delay(3000)
+            isHighlighting = false
+            highlightedIds = emptySet()
+        }
+    }
 
     val onEvent = viewModel::onEvent
     val snackBarEvent = viewModel.snackbarEventFlow
@@ -218,6 +234,7 @@ fun HomeScreen() {
                     .weight(1f),
                 toBuyItems = state.toBuyItems,
                 categories = state.categories,
+                highlightedIds = if (isHighlighting) highlightedIds else emptySet(),
                 onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
                 onClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
                 onEditClick = { item ->
@@ -264,6 +281,7 @@ private fun ItemCardSection(
     modifier: Modifier = Modifier,
     toBuyItems: List<ToBuyItem>,
     categories: List<Category>,
+    highlightedIds: Set<Int> = emptySet(),
     onCheckBoxClick: (ToBuyItem) -> Unit,
     onClick: (ToBuyItem) -> Unit,
     onEditClick: (ToBuyItem) -> Unit = {},
@@ -298,9 +316,12 @@ private fun ItemCardSection(
             contentPadding = PaddingValues(top = 0.dp, bottom = 88.dp)
         ) {
             items(toBuyItems) { toBuyItem ->
+                val isHighlighted = toBuyItem.id != null && highlightedIds.contains(toBuyItem.id)
+
                 Itemcard(
                     toBuyItem = toBuyItem,
                     categories = categories,
+                    isHighlighted = isHighlighted,
                     onCheckBoxClick = { onCheckBoxClick(toBuyItem) },
                     onClick = { onClick(toBuyItem) },
                     onEditClick = { onEditClick(toBuyItem) },
