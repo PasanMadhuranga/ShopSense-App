@@ -263,6 +263,14 @@ class ShoppingModeService : Service() {
                 continue
             }
 
+            if (category.name == "Other") {
+                Log.d(
+                    "ShoppingModeService",
+                    "Skipping search for 'Other' category"
+                )
+                continue
+            }
+
             Log.d(
                 "ShoppingModeService",
                 "Processing category='${category.name}' with ${catItems.size} items"
