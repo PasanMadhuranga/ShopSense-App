@@ -90,13 +90,19 @@ fun HomeScreen(
         state.categories.find { it.id == id }?.name
     } ?: "All categories"
 
-    // Filter items according to selected category
+    // Filter + sort: unchecked first, then checked
     val filteredItems = remember(state.toBuyItems, selectedCategoryId) {
-        if (selectedCategoryId == null) {
+        val base = if (selectedCategoryId == null) {
             state.toBuyItems
         } else {
             state.toBuyItems.filter { it.categoryId == selectedCategoryId }
         }
+
+        // false < true, so unchecked items come first
+        base.sortedWith(
+            compareBy<ToBuyItem> { it.checked }    // unchecked (false) -> top
+                .thenBy { it.name.lowercase() }    // optional: sort by name inside each group
+        )
     }
 
     // Receiver that listens for SHOPPING_MODE_STOPPED from the service

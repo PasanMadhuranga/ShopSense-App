@@ -296,6 +296,8 @@ class HomeViewModel @Inject constructor(
             if (existing.isEmpty()) {
                 try {
                     categoryRepository.insertAll(defaultCategories)
+                    val categories = categoryRepository.getAllCategories().firstOrNull()
+                    Log.d("HomeViewModel", "Default categories added: $categories")
                 } catch (e: Exception) {
                     _snackbarEventFlow.emit(
                         SnackBarEvent.ShowSnackBar(
