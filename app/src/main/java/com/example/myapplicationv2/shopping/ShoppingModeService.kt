@@ -424,26 +424,26 @@ class ShoppingModeService : Service() {
         placeLat: Double,
         placeLng: Double
     ) {
-        val itemText = when {
-            itemNames.isEmpty() -> ""
-            itemNames.size <= 3 -> itemNames.joinToString()
-            else -> itemNames.take(3).joinToString() + "…"
+        val bulletItems = if (itemNames.isEmpty()) {
+            "• (no items specified)"
+        } else {
+            itemNames.joinToString("\n") { "• $it" }
         }
 
-        val text =
-            "There is a $categoryName in $distanceMeters meters ($placeName). " +
-                    "You can buy $itemText."
+        val bigText = buildString {
+            append("There is a $categoryName in $distanceMeters meters ($placeName).\n")
+            append("You can buy:\n")
+            append(bulletItems)
+        }
 
-        Log.d("ShoppingModeService", "Showing nearby-store notification: $text")
+        Log.d("ShoppingModeService", "Showing nearby-store notification: $bigText")
 
-        // Build an intent to open Google Maps navigation
-        // Try the navigation URI first
+        // navigation intent code stays the same...
         val navUri = Uri.parse("google.navigation:q=$placeLat,$placeLng&mode=d")
         val navIntent = Intent(Intent.ACTION_VIEW, navUri).apply {
             setPackage("com.google.android.apps.maps")
         }
 
-        // Fallback: if Google Maps app is not available, open in any maps-capable app / browser
         val finalIntent =
             if (navIntent.resolveActivity(packageManager) != null) {
                 navIntent
@@ -463,12 +463,12 @@ class ShoppingModeService : Service() {
         val notification = NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Nearby $categoryName")
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentText("There is a $categoryName in $distanceMeters meters.") // short text for collapsed view
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .addAction(
-                R.mipmap.ic_launcher,   // you can replace with a dedicated "direction" icon later
+                R.mipmap.ic_launcher,
                 "Show direction",
                 directionPendingIntent
             )
