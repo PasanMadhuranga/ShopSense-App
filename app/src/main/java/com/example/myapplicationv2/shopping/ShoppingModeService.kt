@@ -268,19 +268,10 @@ class ShoppingModeService : Service() {
                 "Processing category='${category.name}' with ${catItems.size} items"
             )
 
-            val placesType = mapCategoryToPlacesType(category.name)
-            if (placesType == null) {
-                Log.w(
-                    "ShoppingModeService",
-                    "No Places type mapping for category='${category.name}', skipping"
-                )
-                continue
-            }
-
             val place = searchClosestPlace(
                 lat = lat,
                 lng = lng,
-                type = placesType,
+                type = category.name,
                 radiusMeters = radiusMeters,
                 movementBearingDeg = movementBearing
             )
@@ -288,7 +279,7 @@ class ShoppingModeService : Service() {
             if (place == null) {
                 Log.d(
                     "ShoppingModeService",
-                    "No nearby place found for type='$placesType'"
+                    "No nearby place found for ${category.name}, skipping"
                 )
                 continue
             }
@@ -351,8 +342,13 @@ class ShoppingModeService : Service() {
         val apiKey = getString(R.string.google_places_web_key)
         val url = "https://places.googleapis.com/v1/places:searchNearby"
 
+        // Expand the base type into a list of related types
+        val includedTypes = expandPlacesTypes(type)
+
         val bodyJson = JSONObject().apply {
-            put("includedTypes", JSONArray().apply { put(type) })  // <-- key fix
+            put("includedTypes", JSONArray().apply {
+                includedTypes.forEach { put(it) }
+            })
             put("maxResultCount", 10)
             put("locationRestriction", JSONObject().apply {
                 put("circle", JSONObject().apply {
@@ -429,7 +425,7 @@ class ShoppingModeService : Service() {
                             )
 
                             if (angleDiff > HEADING_MAX_ANGLE_DEG) {
-                                // This place is mostly to the side or behind the user, skip it
+                                // Mostly to the side or behind the user
                                 continue
                             }
                         } else {
@@ -449,13 +445,63 @@ class ShoppingModeService : Service() {
                         }
                     }
 
-                    Log.d("ShoppingModeService", "Best place for type='$type' -> $best")
+                    Log.d(
+                        "ShoppingModeService",
+                        "Best place for types=${includedTypes.joinToString()} -> $best"
+                    )
                     best
                 }
             } catch (e: Exception) {
                 Log.e("ShoppingModeService", "Error calling Places API (New)", e)
                 null
             }
+        }
+    }
+
+    /**
+     * Expand a base Places type into a list of related types to search together.
+     * All strings here must be valid Places API types.
+     */
+    private fun expandPlacesTypes(baseType: String): List<String> {
+        return when (baseType){
+            "Supermarket" -> listOf(
+                "supermarket",
+                "grocery_store",
+                "department_store"
+            )
+
+            "Pharmacy" -> listOf(
+                "pharmacy"
+            )
+
+            "Bakery" -> listOf(
+                "bakery",
+                "cafe"
+            )
+
+            "Electronics" -> listOf(
+                "electronics_store"
+            )
+
+            "Household" -> listOf(
+                "home_goods_store",
+                "furniture_store"
+            )
+
+            "Stationery" -> listOf(
+                "stationery_store",
+                "book_store"
+            )
+
+            "Pet Store" -> listOf(
+                "pet_store",
+                "veterinary_care"
+            )
+
+            // Fallback: just use whatever came in
+            else -> listOf(baseType)
+        }.also {
+            Log.d("ShoppingModeService", "expandPlacesTypes('$baseType') -> $it")
         }
     }
 
@@ -491,18 +537,6 @@ class ShoppingModeService : Service() {
         val result = FloatArray(1)
         Location.distanceBetween(lat1, lng1, lat2, lng2, result)
         return result[0]
-    }
-
-    private fun mapCategoryToPlacesType(categoryName: String): String? {
-        val type = when (categoryName.lowercase()) {
-            "supermarket", "grocery" -> "supermarket"
-            "pharmacy" -> "pharmacy"
-            "bakery" -> "bakery"
-            "hardware", "hardware store" -> "hardware_store"
-            else -> null
-        }
-        Log.d("ShoppingModeService", "mapCategoryToPlacesType('$categoryName') -> $type")
-        return type
     }
 
     private var nearbyNotificationId = 3000

@@ -183,8 +183,6 @@ class HomeViewModel @Inject constructor(
         Category(name = "Supermarket"),
         Category(name = "Pharmacy"),
         Category(name = "Bakery"),
-        Category(name = "Butchery"),
-        Category(name = "Greengrocer"),
         Category(name = "Electronics"),
         Category(name = "Household"),
         Category(name = "Stationery"),
