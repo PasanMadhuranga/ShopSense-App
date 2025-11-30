@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -50,6 +51,8 @@ class ShoppingModeService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private val httpClient = OkHttpClient()
+    private var lastSearchLat: Double? = null
+    private var lastSearchLng: Double? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -150,8 +153,36 @@ class ShoppingModeService : Service() {
 
     private fun handleNewLocation(lat: Double, lng: Double) {
         Log.d("ShoppingModeService", "New location: $lat,$lng")
+
         serviceScope.launch {
+            val prevLat = lastSearchLat
+            val prevLng = lastSearchLng
+
+            // If we have a previous search location, check distance
+            if (prevLat != null && prevLng != null) {
+                val dist = distanceMeters(prevLat, prevLng, lat, lng)
+
+                Log.d(
+                    "ShoppingModeService",
+                    "Distance from last search location: $dist m"
+                )
+
+                // If distance is less than MIN_DISTANCE_METERS, you can skip
+                if (dist < MIN_DISTANCE_METERS) {
+                    Log.d(
+                        "ShoppingModeService",
+                        "Movement < $MIN_DISTANCE_METERS m, skipping search"
+                    )
+                    return@launch
+                }
+            }
+
+            // Now we are allowed to search
             performNearbySearchAndNotify(lat, lng)
+
+            // Update last search markers
+            lastSearchLat = lat
+            lastSearchLng = lng
         }
     }
 
@@ -229,7 +260,9 @@ class ShoppingModeService : Service() {
                 categoryName = category.name,
                 placeName = place.name,
                 distanceMeters = place.distanceMeters,
-                itemNames = itemNames
+                itemNames = itemNames,
+                placeLat = place.lat,
+                placeLng = place.lng
             )
         }
     }
@@ -266,7 +299,7 @@ class ShoppingModeService : Service() {
         lat: Double,
         lng: Double,
         type: String,
-        radiusMeters: Int = 500
+        radiusMeters: Int = 200
     ): NearbyPlace? {
         val apiKey = getString(R.string.google_places_web_key)
         val url = "https://places.googleapis.com/v1/places:searchNearby"
@@ -339,7 +372,12 @@ class ShoppingModeService : Service() {
                         Log.d("ShoppingModeService", "Candidate place: $name, distance=$dist m")
 
                         if (best == null || dist < best!!.distanceMeters) {
-                            best = NearbyPlace(name = name, distanceMeters = dist)
+                            best = NearbyPlace(
+                                name = name,
+                                distanceMeters = dist,
+                                lat = placeLat,
+                                lng = placeLng
+                            )
                         }
                     }
 
@@ -382,7 +420,9 @@ class ShoppingModeService : Service() {
         categoryName: String,
         placeName: String,
         distanceMeters: Int,
-        itemNames: List<String>
+        itemNames: List<String>,
+        placeLat: Double,
+        placeLng: Double
     ) {
         val itemText = when {
             itemNames.isEmpty() -> ""
@@ -396,6 +436,30 @@ class ShoppingModeService : Service() {
 
         Log.d("ShoppingModeService", "Showing nearby-store notification: $text")
 
+        // Build an intent to open Google Maps navigation
+        // Try the navigation URI first
+        val navUri = Uri.parse("google.navigation:q=$placeLat,$placeLng&mode=d")
+        val navIntent = Intent(Intent.ACTION_VIEW, navUri).apply {
+            setPackage("com.google.android.apps.maps")
+        }
+
+        // Fallback: if Google Maps app is not available, open in any maps-capable app / browser
+        val finalIntent =
+            if (navIntent.resolveActivity(packageManager) != null) {
+                navIntent
+            } else {
+                val mapsUrl =
+                    "https://www.google.com/maps/dir/?api=1&destination=$placeLat,$placeLng"
+                Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
+            }
+
+        val directionPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            finalIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Nearby $categoryName")
@@ -403,6 +467,11 @@ class ShoppingModeService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .addAction(
+                R.mipmap.ic_launcher,   // you can replace with a dedicated "direction" icon later
+                "Show direction",
+                directionPendingIntent
+            )
             .build()
 
         val hasPermission =
@@ -425,12 +494,14 @@ class ShoppingModeService : Service() {
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
         const val NOTIFICATION_ID = 2001
 
-        private const val UPDATE_INTERVAL_MS: Long = 2 * 60 * 1000   // every 2 minutes
+        private const val UPDATE_INTERVAL_MS: Long = 10 * 1000   // every 10 seconds
         private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
     }
 
     private data class NearbyPlace(
         val name: String,
-        val distanceMeters: Int
+        val distanceMeters: Int,
+        val lat: Double,
+        val lng: Double
     )
 }
