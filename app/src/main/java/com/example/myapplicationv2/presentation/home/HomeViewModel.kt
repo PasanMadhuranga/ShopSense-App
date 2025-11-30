@@ -2,6 +2,7 @@ package com.example.myapplicationv2.presentation.home
 
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import androidx.compose.material3.SnackbarDuration
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -30,20 +31,6 @@ class HomeViewModel @Inject constructor(
     private val geofenceManager: GeofenceManager
 ) : ViewModel() {
 
-    init {
-        viewModelScope.launch {
-            homePrefs.homeFlow.collect { saved ->
-                _state.update {
-                    it.copy(
-                        homeLat = saved?.lat,
-                        homeLng = saved?.lng,
-                        homeRadiusMeters = saved?.radiusMeters ?: it.homeRadiusMeters
-                    )
-                }
-            }
-        }
-    }
-
     private val _state = MutableStateFlow(HomeState())
 
     val state = combine(
@@ -63,6 +50,31 @@ class HomeViewModel @Inject constructor(
 
     private val _snackbarEventFlow = MutableSharedFlow<SnackBarEvent>()
     val snackbarEventFlow = _snackbarEventFlow.asSharedFlow()
+
+    init {
+        // Load saved home location
+        viewModelScope.launch {
+            homePrefs.homeFlow.collect { saved ->
+                _state.update {
+                    it.copy(
+                        homeLat = saved?.lat,
+                        homeLng = saved?.lng,
+                        homeRadiusMeters = saved?.radiusMeters ?: it.homeRadiusMeters
+                    )
+                }
+            }
+        }
+
+        // Keep shopping mode flag in sync with DataStore
+        viewModelScope.launch {
+            homePrefs.shoppingModeOn.collect { isOn ->
+                _state.update { it.copy(isShoppingModeActive = isOn) }
+            }
+        }
+
+        // Seed default categories
+        seedCategoriesIfEmpty()
+    }
 
     fun onEvent(event: HomeEvent) {
         when (event) {
@@ -97,10 +109,12 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(itemQuantity = event.quantity) }
             }
 
-            HomeEvent.StartUpdateHome -> _state.update { it.copy(
-                isUpdatingHome = true,
-                tempRadiusMeters = it.homeRadiusMeters
-            )}
+            HomeEvent.StartUpdateHome -> _state.update {
+                it.copy(
+                    isUpdatingHome = true,
+                    tempRadiusMeters = it.homeRadiusMeters
+                )
+            }
 
             is HomeEvent.OnTempRadiusChange ->
                 _state.update { it.copy(tempRadiusMeters = event.meters) }
@@ -111,7 +125,8 @@ class HomeViewModel @Inject constructor(
 
             HomeEvent.ClearHome -> clearHome()
 
-            HomeEvent.DismissUpdateHome -> _state.update { it.copy(isUpdatingHome = false, isLocationLoading = false) }
+            HomeEvent.DismissUpdateHome ->
+                _state.update { it.copy(isUpdatingHome = false, isLocationLoading = false) }
 
             HomeEvent.StartSelectHomeOnMap -> {
                 _state.update { it.copy(isSelectingHomeOnMap = true) }
@@ -125,18 +140,25 @@ class HomeViewModel @Inject constructor(
 
             HomeEvent.SetShoppingModeOn -> {
                 _state.update { it.copy(isShoppingModeActive = true) }
+                viewModelScope.launch {
+                    homePrefs.setShoppingMode(on = true, manual = true)
+                }
             }
 
             HomeEvent.SetShoppingModeOff -> {
                 _state.update { it.copy(isShoppingModeActive = false) }
+                viewModelScope.launch {
+                    homePrefs.setShoppingMode(on = false, manual = false)
+                }
             }
 
             is HomeEvent.OnHomeLocationSelected -> {
-                // Update state and save via HomePrefs
                 val radius = state.value.homeRadiusMeters
+                Log.d("HomeViewModel", "Radius: $radius, lat: ${event.lat}, lng: ${event.lng}")
                 viewModelScope.launch {
                     try {
                         homePrefs.saveHome(event.lat, event.lng, radius)
+                        geofenceManager.setHomeGeofence(event.lat, event.lng, radius)
                         _state.update {
                             it.copy(
                                 homeLat = event.lat,
@@ -170,11 +192,12 @@ class HomeViewModel @Inject constructor(
         Category(name = "Other")
     )
 
-    init {
-        seedCategoriesIfEmpty()
-    }
-
     private fun startShoppingMode() {
+        // Mark as ON and manual = true (user toggled it)
+        viewModelScope.launch {
+            homePrefs.setShoppingMode(on = true, manual = true)
+        }
+
         _state.update { it.copy(isShoppingModeActive = true) }
 
         val intent = Intent(app, ShoppingModeService::class.java).apply {
@@ -184,6 +207,11 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun stopShoppingMode() {
+        // Mark as OFF and manual = false
+        viewModelScope.launch {
+            homePrefs.setShoppingMode(on = false, manual = false)
+        }
+
         _state.update { it.copy(isShoppingModeActive = false) }
 
         val intent = Intent(app, ShoppingModeService::class.java).apply {
@@ -198,13 +226,21 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(isLocationLoading = true) }
                 val loc = locationProvider.getLastLocationOrNull()
                 if (loc == null) {
-                    _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Location unavailable. Open Maps or try outside."))
+                    _snackbarEventFlow.emit(
+                        SnackBarEvent.ShowSnackBar(
+                            "Location unavailable. Open Maps or try outside."
+                        )
+                    )
                 } else {
                     _state.update { it.copy(homeLat = loc.latitude, homeLng = loc.longitude) }
-                    _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Pinned to current location."))
+                    _snackbarEventFlow.emit(
+                        SnackBarEvent.ShowSnackBar("Pinned to current location.")
+                    )
                 }
             } catch (e: Exception) {
-                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Failed to get location: ${e.message}"))
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar("Failed to get location: ${e.message}")
+                )
             } finally {
                 _state.update { it.copy(isLocationLoading = false) }
             }
@@ -217,7 +253,9 @@ class HomeViewModel @Inject constructor(
         val lng = s.homeLng
         if (lat == null || lng == null) {
             viewModelScope.launch {
-                _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Pick a location first."))
+                _snackbarEventFlow.emit(
+                    SnackBarEvent.ShowSnackBar("Pick a location first.")
+                )
             }
             return
         }
@@ -248,10 +286,11 @@ class HomeViewModel @Inject constructor(
             homePrefs.clearHome()
             geofenceManager.clearHomeGeofence()
             _state.update { it.copy(homeLat = null, homeLng = null) }
-            _snackbarEventFlow.emit(SnackBarEvent.ShowSnackBar("Home cleared."))
+            _snackbarEventFlow.emit(
+                SnackBarEvent.ShowSnackBar("Home cleared.")
+            )
         }
     }
-
 
     private fun seedCategoriesIfEmpty() {
         viewModelScope.launch {
@@ -261,7 +300,9 @@ class HomeViewModel @Inject constructor(
                     categoryRepository.insertAll(defaultCategories)
                 } catch (e: Exception) {
                     _snackbarEventFlow.emit(
-                        SnackBarEvent.ShowSnackBar("Failed to add default categories: ${e.message}")
+                        SnackBarEvent.ShowSnackBar(
+                            "Failed to add default categories: ${e.message}"
+                        )
                     )
                 }
             }
@@ -285,7 +326,8 @@ class HomeViewModel @Inject constructor(
                     name = name,
                     quantity = quantity,
                     categoryId = categoryId,
-                    checked = s.toBuyItems.firstOrNull { it.id == s.editingItemId }?.checked ?: false
+                    checked = s.toBuyItems.firstOrNull { it.id == s.editingItemId }?.checked
+                        ?: false
                 )
 
                 toBuyItemRepository.upsertToBuyItem(item)
@@ -301,7 +343,10 @@ class HomeViewModel @Inject constructor(
 
                 _snackbarEventFlow.emit(
                     SnackBarEvent.ShowSnackBar(
-                        message = if (s.editingItemId == null) "Item added successfully." else "Item updated successfully."
+                        message = if (s.editingItemId == null)
+                            "Item added successfully."
+                        else
+                            "Item updated successfully."
                     )
                 )
             } catch (e: Exception) {

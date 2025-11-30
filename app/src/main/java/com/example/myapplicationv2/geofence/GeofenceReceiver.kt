@@ -1,21 +1,24 @@
 package com.example.myapplicationv2.geofence
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.example.myapplicationv2.R
-import com.example.myapplicationv2.ShopSenseApp
-import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofencingEvent
-import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.myapplicationv2.MainActivity
+import com.example.myapplicationv2.R
+import com.example.myapplicationv2.ShopSenseApp
+import com.example.myapplicationv2.data.local.prefs.HomePrefs
 import com.example.myapplicationv2.shopping.ShoppingModeService
+import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofencingEvent
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 class GeofenceReceiver : BroadcastReceiver() {
 
@@ -25,17 +28,39 @@ class GeofenceReceiver : BroadcastReceiver() {
 
         val transition = event.geofenceTransition
 
+        val prefs = HomePrefs(context)
+
+        // Read current shopping mode state synchronously
+        val isOn: Boolean
+        val isManual: Boolean
+        runBlocking {
+            isOn = prefs.shoppingModeOn.first()
+            isManual = prefs.shoppingModeManual.first()
+        }
+
         when (transition) {
             Geofence.GEOFENCE_TRANSITION_EXIT -> {
-                // Already showing "Activate Shopping Mode?" notification here
-                showShoppingModeNotification(context)
-            }
-            Geofence.GEOFENCE_TRANSITION_ENTER -> {
-                // Automatically turn Shopping Mode OFF
-                val stopIntent = Intent(context, ShoppingModeService::class.java).apply {
-                    action = ShoppingModeService.ACTION_STOP
+                // Only ask if shopping mode is currently OFF
+                if (!isOn) {
+                    showShoppingModeNotification(context)
                 }
-                context.startService(stopIntent)
+            }
+
+            Geofence.GEOFENCE_TRANSITION_ENTER -> {
+                // Only auto turn off shopping mode if it was NOT started manually
+                if (isOn && !isManual) {
+                    val stopIntent = Intent(context, ShoppingModeService::class.java).apply {
+                        action = ShoppingModeService.ACTION_STOP
+                    }
+                    context.startService(stopIntent)
+
+                    // Clear the flags as well
+                    runBlocking {
+                        prefs.setShoppingMode(on = false, manual = false)
+                    }
+                }
+                // If isOn && isManual, user chose to keep it on with the toggle,
+                // so we do nothing here.
             }
         }
     }
@@ -85,23 +110,23 @@ class GeofenceReceiver : BroadcastReceiver() {
             context,
             2,
             noIntent,
-            yesFlags   // same flags as YES
+            yesFlags
         )
 
         val notification = NotificationCompat.Builder(
             context,
             ShopSenseApp.SHOPPING_MODE_CHANNEL_ID
         )
-            .setSmallIcon(R.mipmap.ic_launcher) // or any valid small icon
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("ShopSense")
             .setContentText("Activate Shopping Mode?")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
             .addAction(
-                /* icon = */ 0,
-                /* title = */ "Yes",
-                /* intent = */ yesPendingIntent
+                0,
+                "Yes",
+                yesPendingIntent
             )
             .addAction(
                 0,

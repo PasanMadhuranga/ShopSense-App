@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.myapplicationv2.R
 import com.example.myapplicationv2.ShopSenseApp
+import com.example.myapplicationv2.data.local.prefs.HomePrefs
 import com.example.myapplicationv2.domain.model.Category
 import com.example.myapplicationv2.domain.model.ToBuyItem
 import com.example.myapplicationv2.domain.repository.CategoryRepository
@@ -39,9 +40,11 @@ import org.json.JSONObject
 @AndroidEntryPoint
 class ShoppingModeService : Service() {
 
-    @Inject
-    lateinit var toBuyItemRepository: ToBuyItemRepository
+    @Inject lateinit var toBuyItemRepository: ToBuyItemRepository
     @Inject lateinit var categoryRepository: CategoryRepository
+
+    // NEW: prefs
+    @Inject lateinit var homePrefs: HomePrefs
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -63,16 +66,33 @@ class ShoppingModeService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 Log.d("ShoppingModeService", "ACTION_START received")
+
+                // If the service is started from notification / geofence (not from ViewModel),
+                // we still want prefs to reflect that Shopping Mode is ON (manual = false).
+                serviceScope.launch {
+                    homePrefs.setShoppingMode(on = true, manual = false)
+                }
+
                 startForeground(NOTIFICATION_ID, buildOngoingNotification())
                 startLocationUpdates()
             }
+
             ACTION_STOP -> {
                 Log.d("ShoppingModeService", "ACTION_STOP received")
+
+                // Make sure prefs say OFF
+                serviceScope.launch {
+                    homePrefs.setShoppingMode(on = false, manual = false)
+                }
+
                 stopLocationUpdates()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+
+                // Let UI know that the service stopped, so the toggle can turn off
                 sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
             }
+
             else -> {
                 Log.d("ShoppingModeService", "Unknown action: ${intent?.action}")
             }
@@ -234,7 +254,7 @@ class ShoppingModeService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(stopPendingIntent)
             .addAction(
-                R.mipmap.ic_launcher,              // or a custom "stop" icon if you add one
+                R.mipmap.ic_launcher,
                 "Off",
                 stopPendingIntent
             )
@@ -405,7 +425,7 @@ class ShoppingModeService : Service() {
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
         const val NOTIFICATION_ID = 2001
 
-        private const val UPDATE_INTERVAL_MS: Long = 30 * 1000   // every 30 seconds
+        private const val UPDATE_INTERVAL_MS: Long = 2 * 60 * 1000   // every 2 minutes
         private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
     }
 

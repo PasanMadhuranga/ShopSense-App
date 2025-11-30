@@ -1,9 +1,7 @@
 package com.example.myapplicationv2.presentation.home
 
 import android.Manifest
-import android.content.Context
 import android.content.IntentFilter
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -32,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv2.domain.model.ToBuyItem
@@ -60,6 +59,8 @@ fun HomeScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // Receiver that listens for SHOPPING_MODE_STOPPED from the service
     val shoppingStoppedReceiver = remember {
         ShoppingModeStatusReceiver {
             onEvent(HomeEvent.SetShoppingModeOff)
@@ -69,24 +70,17 @@ fun HomeScreen() {
     DisposableEffect(Unit) {
         val filter = IntentFilter("SHOPPING_MODE_STOPPED")
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            // Android 13+ requires the flags parameter, and for our custom
-            // in-app broadcast we mark it as NOT_EXPORTED
-            context.registerReceiver(
-                shoppingStoppedReceiver,
-                filter,
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.registerReceiver(shoppingStoppedReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            context,
+            shoppingStoppedReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         onDispose {
             context.unregisterReceiver(shoppingStoppedReceiver)
         }
     }
-
 
     // Launcher to ask for location permission
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -96,7 +90,6 @@ fun HomeScreen() {
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
         if (fineGranted || coarseGranted) {
-            // Now we actually try to get the location
             onEvent(HomeEvent.UseCurrentLocation)
         } else {
             scope.launch {
@@ -107,7 +100,7 @@ fun HomeScreen() {
 
     LaunchedEffect(key1 = true) {
         snackBarEvent.collectLatest { event ->
-            when(event) {
+            when (event) {
                 is SnackBarEvent.ShowSnackBar -> {
                     snackbarHostState.showSnackbar(
                         message = event.message,
@@ -168,7 +161,6 @@ fun HomeScreen() {
         onDismiss = { onEvent(HomeEvent.DismissUpdateHome) }
     )
 
-
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = { HomeScreenTopBar() },
@@ -187,7 +179,8 @@ fun HomeScreen() {
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -251,7 +244,6 @@ fun HomeScreen() {
             }
         )
     }
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
