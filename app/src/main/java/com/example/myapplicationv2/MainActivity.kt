@@ -3,7 +3,6 @@ package com.example.myapplicationv2
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import com.example.myapplicationv2.presentation.home.HomeScreen
 import com.example.myapplicationv2.presentation.theme.MyApplicationV2Theme
 import com.example.myapplicationv2.shopping.ShoppingModeService

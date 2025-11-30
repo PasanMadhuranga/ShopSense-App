@@ -1,7 +1,12 @@
 package com.example.myapplicationv2.presentation.home
 
 import android.Manifest
+import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,6 +61,7 @@ fun HomeScreen(
     // Highlight state for items opened from notification
     var highlightedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var isHighlighting by remember { mutableStateOf(false) }
+    var showBackgroundLocationDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(initialHighlightIds) {
         if (initialHighlightIds.isNotEmpty()) {
@@ -127,6 +133,45 @@ fun HomeScreen(
         } else {
             scope.launch {
                 snackbarHostState.showSnackbar("Location permission is required to use current location.")
+            }
+        }
+    }
+
+    // Notification permission launcher (Android 13+)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted || android.os.Build.VERSION.SDK_INT < 33) {
+            // Now we can safely toggle Shopping Mode ON
+            onEvent(HomeEvent.ToggleShoppingMode)
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Notification permission is needed to show store suggestions."
+                )
+            }
+        }
+    }
+
+    // Location permission launcher specifically for Shopping Mode
+    val shoppingLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+        if (fineGranted || coarseGranted) {
+            // If notifications also need runtime permission, request that next
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                onEvent(HomeEvent.ToggleShoppingMode)
+            }
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Location permission is required to use Shopping Mode."
+                )
             }
         }
     }
@@ -266,8 +311,70 @@ fun HomeScreen(
                     }
                     Switch(
                         checked = state.isShoppingModeActive,
-                        onCheckedChange = {
-                            onEvent(HomeEvent.ToggleShoppingMode)
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                // User is trying to enable Shopping Mode
+                                val fineGranted = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                val coarseGranted = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                // Background location: needed for "Allow all the time"
+                                val backgroundGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                } else {
+                                    true
+                                }
+
+                                val notificationGranted = if (Build.VERSION.SDK_INT >= 33) {
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                } else {
+                                    true
+                                }
+
+                                when {
+                                    // Ask for foreground location first
+                                    !fineGranted && !coarseGranted -> {
+                                        shoppingLocationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    }
+
+                                    // Foreground is granted but "all the time" is not
+                                    !backgroundGranted -> {
+                                        showBackgroundLocationDialog = true
+                                    }
+
+                                    // Location is fine, but notifications are not
+                                    !notificationGranted && Build.VERSION.SDK_INT >= 33 -> {
+                                        notificationPermissionLauncher.launch(
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        )
+                                    }
+
+                                    // Everything is granted
+                                    else -> {
+                                        onEvent(HomeEvent.ToggleShoppingMode)
+                                    }
+                                }
+                            } else {
+                                // Turning Shopping Mode OFF does not need permissions
+                                onEvent(HomeEvent.ToggleShoppingMode)
+                            }
                         }
                     )
                 }
@@ -341,6 +448,40 @@ fun HomeScreen(
                 }
             )
         }
+    }
+
+    if (showBackgroundLocationDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackgroundLocationDialog = false },
+            title = { Text("Allow location all the time") },
+            text = {
+                Text(
+                    "Shopping Mode needs access to your location even when the app is not open. " +
+                            "In the next screen, go to Permissions > Location > Allow all the time."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBackgroundLocationDialog = false
+                        val intent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null)
+                        )
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Text("Open settings")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showBackgroundLocationDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (state.isSelectingHomeOnMap) {

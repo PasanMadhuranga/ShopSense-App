@@ -1,6 +1,5 @@
 package com.example.myapplicationv2.presentation.components
 
-import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
