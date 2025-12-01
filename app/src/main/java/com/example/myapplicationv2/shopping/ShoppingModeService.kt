@@ -1,6 +1,7 @@
 package com.example.myapplicationv2.shopping
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -44,7 +45,6 @@ class ShoppingModeService : Service() {
     @Inject lateinit var toBuyItemRepository: ToBuyItemRepository
     @Inject lateinit var categoryRepository: CategoryRepository
 
-    // NEW: prefs
     @Inject lateinit var homePrefs: HomePrefs
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -96,6 +96,45 @@ class ShoppingModeService : Service() {
 
                 // Let UI know that the service stopped, so the toggle can turn off
                 sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
+            }
+
+            ACTION_SNOOZE -> {
+                Log.d("ShoppingModeService", "ACTION_SNOOZE received")
+
+                // Schedule restart in 10 minutes (inexact alarm, no special permission needed)
+                val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+                val resumeIntent = Intent(this, ShoppingModeService::class.java).apply {
+                    action = ACTION_START
+                }
+                val resumePendingIntent = PendingIntent.getService(
+                    this,
+                    REQUEST_CODE_RESUME,
+                    resumeIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val triggerAtMillis = System.currentTimeMillis() + SNOOZE_DURATION_MS
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // Inexact, allowed without SCHEDULE_EXACT_ALARM
+                    alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        resumePendingIntent
+                    )
+                } else {
+                    // On older versions you can still use exact if you want
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        resumePendingIntent
+                    )
+                }
+
+                // Keep Shopping Mode "on" in prefs, but pause the service and remove the notification
+                stopLocationUpdates()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
             }
 
             else -> {
@@ -156,7 +195,7 @@ class ShoppingModeService : Service() {
     private fun handleNewLocation(location: Location) {
         val lat = location.latitude
         val lng = location.longitude
-        val speedMps = location.speed        // may be 0 or unreliable at very low speed
+        val speedMps = location.speed
 
         Log.d(
             "ShoppingModeService",
@@ -167,7 +206,6 @@ class ShoppingModeService : Service() {
             val prevLat = lastSearchLat
             val prevLng = lastSearchLng
 
-            // Distance gating (same as your current logic)
             if (prevLat != null && prevLng != null) {
                 val dist = distanceMeters(prevLat, prevLng, lat, lng)
                 Log.d("ShoppingModeService", "Distance from last search location: $dist m")
@@ -185,7 +223,7 @@ class ShoppingModeService : Service() {
             val previousLocation = lastLocation
             val movementBearing: Float? =
                 if (previousLocation != null && speedMps >= SPEED_MIN_FOR_HEADING) {
-                    previousLocation.bearingTo(location)   // 0..360 degrees
+                    previousLocation.bearingTo(location)
                 } else {
                     null
                 }
@@ -325,13 +363,29 @@ class ShoppingModeService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val snoozeIntent = Intent(this, ShoppingModeService::class.java).apply {
+            action = ACTION_SNOOZE
+        }
+
+        val snoozePendingIntent = PendingIntent.getService(
+            this,
+            1,
+            snoozeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("ShopSense")
             .setContentText("Shopping Mode is active")
-            .setOngoing(true)                      // keeps it stuck in the shade
+            .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(stopPendingIntent)
+            .addAction(
+                R.mipmap.ic_launcher,
+                "Snooze",
+                snoozePendingIntent
+            )
             .addAction(
                 R.mipmap.ic_launcher,
                 "Off",
@@ -339,7 +393,6 @@ class ShoppingModeService : Service() {
             )
             .build()
     }
-
 
     private suspend fun searchClosestPlace(
         lat: Double,
@@ -351,7 +404,6 @@ class ShoppingModeService : Service() {
         val apiKey = getString(R.string.google_places_web_key)
         val url = "https://places.googleapis.com/v1/places:searchNearby"
 
-        // Expand the base type into a list of related types
         val includedTypes = expandPlacesTypes(type)
 
         val bodyJson = JSONObject().apply {
@@ -434,7 +486,6 @@ class ShoppingModeService : Service() {
                             )
 
                             if (angleDiff > HEADING_MAX_ANGLE_DEG) {
-                                // Mostly to the side or behind the user
                                 continue
                             }
                         } else {
@@ -472,7 +523,7 @@ class ShoppingModeService : Service() {
      * All strings here must be valid Places API types.
      */
     private fun expandPlacesTypes(baseType: String): List<String> {
-        return when (baseType){
+        return when (baseType) {
             "Supermarket" -> listOf(
                 "supermarket",
                 "grocery_store",
@@ -507,7 +558,6 @@ class ShoppingModeService : Service() {
                 "veterinary_care"
             )
 
-            // Fallback: just use whatever came in
             else -> listOf(baseType)
         }.also {
             Log.d("ShoppingModeService", "expandPlacesTypes('$baseType') -> $it")
@@ -521,7 +571,6 @@ class ShoppingModeService : Service() {
         lng2: Double
     ): Float {
         val result = FloatArray(2)
-        // result[1] will be the initial bearing from (lat1,lng1) to (lat2,lng2)
         Location.distanceBetween(lat1, lng1, lat2, lng2, result)
         return result[1]
     }
@@ -559,7 +608,6 @@ class ShoppingModeService : Service() {
         placeLat: Double,
         placeLng: Double
     ) {
-        // Key that identifies "this place for this category"
         val notificationKey = "$categoryName|$placeName"
         val now = System.currentTimeMillis()
         val lastTime = lastNotificationTimestamps[notificationKey]
@@ -572,7 +620,6 @@ class ShoppingModeService : Service() {
             return
         }
 
-        // Update the timestamp since we are going to notify now
         lastNotificationTimestamps[notificationKey] = now
 
         val bulletItems = if (itemNames.isEmpty()) {
@@ -660,6 +707,7 @@ class ShoppingModeService : Service() {
     companion object {
         const val ACTION_START = "com.example.myapplicationv2.shopping.ACTION_START"
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
+        const val ACTION_SNOOZE = "com.example.myapplicationv2.shopping.ACTION_SNOOZE"
         const val NOTIFICATION_ID = 2001
         private const val UPDATE_INTERVAL_MS: Long = 10 * 1000   // every 10 seconds
         private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
@@ -669,7 +717,9 @@ class ShoppingModeService : Service() {
             "com.example.myapplicationv2.EXTRA_HIGHLIGHT_ITEM_IDS"
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
-        const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L // cooldown between notifications for the same place (2 minutes)
+        const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
+        const val SNOOZE_DURATION_MS = 30 * 1000L
+        const val REQUEST_CODE_RESUME = 5001
     }
 
     private data class NearbyPlace(
