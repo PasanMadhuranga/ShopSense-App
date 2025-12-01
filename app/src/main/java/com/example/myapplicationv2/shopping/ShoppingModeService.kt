@@ -54,6 +54,7 @@ class ShoppingModeService : Service() {
     private var lastSearchLat: Double? = null
     private var lastSearchLng: Double? = null
     private var lastLocation: Location? = null
+    private val lastNotificationTimestamps = mutableMapOf<String, Long>()
 
     override fun onCreate() {
         super.onCreate()
@@ -558,6 +559,22 @@ class ShoppingModeService : Service() {
         placeLat: Double,
         placeLng: Double
     ) {
+        // Key that identifies "this place for this category"
+        val notificationKey = "$categoryName|$placeName"
+        val now = System.currentTimeMillis()
+        val lastTime = lastNotificationTimestamps[notificationKey]
+
+        if (lastTime != null && now - lastTime < NOTIFY_COOLDOWN_MS) {
+            Log.d(
+                "ShoppingModeService",
+                "Skipping notification for $notificationKey; last shown ${(now - lastTime) / 1000}s ago"
+            )
+            return
+        }
+
+        // Update the timestamp since we are going to notify now
+        lastNotificationTimestamps[notificationKey] = now
+
         val bulletItems = if (itemNames.isEmpty()) {
             "• (no items specified)"
         } else {
@@ -589,7 +606,6 @@ class ShoppingModeService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // navigation intent code stays the same...
         val navUri = Uri.parse("google.navigation:q=$placeLat,$placeLng&mode=d")
         val navIntent = Intent(Intent.ACTION_VIEW, navUri).apply {
             setPackage("com.google.android.apps.maps")
@@ -653,6 +669,7 @@ class ShoppingModeService : Service() {
             "com.example.myapplicationv2.EXTRA_HIGHLIGHT_ITEM_IDS"
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
+        const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L // cooldown between notifications for the same place (2 minutes)
     }
 
     private data class NearbyPlace(
