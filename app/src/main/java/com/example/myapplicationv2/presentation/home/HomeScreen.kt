@@ -52,26 +52,9 @@ import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    initialHighlightIds: List<Int> = emptyList()
-) {
+fun HomeScreen() {
     val viewModel: HomeViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
-
-    // Highlight state for items opened from notification
-    var highlightedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var isHighlighting by remember { mutableStateOf(false) }
-    var showBackgroundLocationDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(initialHighlightIds) {
-        if (initialHighlightIds.isNotEmpty()) {
-            highlightedIds = initialHighlightIds.toSet()
-            isHighlighting = true
-            kotlinx.coroutines.delay(3000)
-            isHighlighting = false
-            highlightedIds = emptySet()
-        }
-    }
 
     val onEvent = viewModel::onEvent
     val snackBarEvent = viewModel.snackbarEventFlow
@@ -81,6 +64,8 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    var showBackgroundLocationDialog by remember { mutableStateOf(false) }
 
     // Category filter state (null = all)
     var selectedCategoryId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -98,10 +83,9 @@ fun HomeScreen(
             state.toBuyItems.filter { it.categoryId == selectedCategoryId }
         }
 
-        // false < true, so unchecked items come first
         base.sortedWith(
-            compareBy<ToBuyItem> { it.checked }    // unchecked (false) -> top
-                .thenBy { it.name.lowercase() }    // optional: sort by name inside each group
+            compareBy<ToBuyItem> { it.checked }          // unchecked (false) first
+                .thenBy { it.name.lowercase() }          // optional: by name in each group
         )
     }
 
@@ -127,7 +111,7 @@ fun HomeScreen(
         }
     }
 
-    // Launcher to ask for location permission
+    // Launcher to ask for location permission for "Use current location"
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -148,7 +132,6 @@ fun HomeScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted || android.os.Build.VERSION.SDK_INT < 33) {
-            // Now we can safely toggle Shopping Mode ON
             onEvent(HomeEvent.ToggleShoppingMode)
         } else {
             scope.launch {
@@ -167,7 +150,6 @@ fun HomeScreen(
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
         if (fineGranted || coarseGranted) {
-            // If notifications also need runtime permission, request that next
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
@@ -284,8 +266,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Shopping mode toggle
-            // Shopping mode section with light red background
+            // Shopping mode card
             val shoppingModeColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
 
             Card(
@@ -319,7 +300,6 @@ fun HomeScreen(
                         checked = state.isShoppingModeActive,
                         onCheckedChange = { checked ->
                             if (checked) {
-                                // User is trying to enable Shopping Mode
                                 val fineGranted = ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.ACCESS_FINE_LOCATION
@@ -330,7 +310,6 @@ fun HomeScreen(
                                     Manifest.permission.ACCESS_COARSE_LOCATION
                                 ) == PackageManager.PERMISSION_GRANTED
 
-                                // Background location: needed for "Allow all the time"
                                 val backgroundGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                     ContextCompat.checkSelfPermission(
                                         context,
@@ -350,7 +329,6 @@ fun HomeScreen(
                                 }
 
                                 when {
-                                    // Ask for foreground location first
                                     !fineGranted && !coarseGranted -> {
                                         shoppingLocationPermissionLauncher.launch(
                                             arrayOf(
@@ -360,25 +338,21 @@ fun HomeScreen(
                                         )
                                     }
 
-                                    // Foreground is granted but "all the time" is not
                                     !backgroundGranted -> {
                                         showBackgroundLocationDialog = true
                                     }
 
-                                    // Location is fine, but notifications are not
                                     !notificationGranted && Build.VERSION.SDK_INT >= 33 -> {
                                         notificationPermissionLauncher.launch(
                                             Manifest.permission.POST_NOTIFICATIONS
                                         )
                                     }
 
-                                    // Everything is granted
                                     else -> {
                                         onEvent(HomeEvent.ToggleShoppingMode)
                                     }
                                 }
                             } else {
-                                // Turning Shopping Mode OFF does not need permissions
                                 onEvent(HomeEvent.ToggleShoppingMode)
                             }
                         }
@@ -412,7 +386,6 @@ fun HomeScreen(
                     expanded = isCategoryDropdownExpanded,
                     onDismissRequest = { isCategoryDropdownExpanded = false }
                 ) {
-                    // "All categories" item
                     DropdownMenuItem(
                         text = { Text("All categories") },
                         onClick = {
@@ -420,7 +393,6 @@ fun HomeScreen(
                             isCategoryDropdownExpanded = false
                         }
                     )
-                    // One entry per category
                     state.categories.forEach { category ->
                         DropdownMenuItem(
                             text = { Text(category.name) },
@@ -441,7 +413,6 @@ fun HomeScreen(
                     .weight(1f),
                 toBuyItems = filteredItems,
                 categories = state.categories,
-                highlightedIds = if (isHighlighting) highlightedIds else emptySet(),
                 onCheckBoxClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
                 onClick = { onEvent(HomeEvent.onCheckBoxClick(it)) },
                 onEditClick = { item ->
@@ -522,7 +493,6 @@ private fun ItemCardSection(
     modifier: Modifier = Modifier,
     toBuyItems: List<ToBuyItem>,
     categories: List<Category>,
-    highlightedIds: Set<Int> = emptySet(),
     onCheckBoxClick: (ToBuyItem) -> Unit,
     onClick: (ToBuyItem) -> Unit,
     onEditClick: (ToBuyItem) -> Unit = {},
@@ -557,12 +527,9 @@ private fun ItemCardSection(
             contentPadding = PaddingValues(top = 0.dp, bottom = 88.dp)
         ) {
             items(toBuyItems) { toBuyItem ->
-                val isHighlighted = toBuyItem.id != null && highlightedIds.contains(toBuyItem.id)
-
                 Itemcard(
                     toBuyItem = toBuyItem,
                     categories = categories,
-                    isHighlighted = isHighlighted,
                     onCheckBoxClick = { onCheckBoxClick(toBuyItem) },
                     onClick = { onClick(toBuyItem) },
                     onEditClick = { onEditClick(toBuyItem) },

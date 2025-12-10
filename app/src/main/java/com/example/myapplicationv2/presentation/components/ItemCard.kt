@@ -1,11 +1,5 @@
 package com.example.myapplicationv2.presentation.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -24,10 +18,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,40 +31,15 @@ fun Itemcard(
     modifier: Modifier = Modifier,
     toBuyItem: ToBuyItem,
     categories: List<Category>,
-    isHighlighted: Boolean = false,
     onCheckBoxClick: () -> Unit,
     onClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
-    val normalColor = MaterialTheme.colorScheme.surface
-    val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-
-    val infiniteTransition = rememberInfiniteTransition(label = "highlightTransition")
-    val flashFactor by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 700,
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "flashFactor"
-    )
-
-    val containerColor =
-        if (isHighlighted) {
-            lerp(normalColor, highlightColor, flashFactor)
-        } else {
-            normalColor
-        }
-
     ElevatedCard(
         modifier = modifier.clickable { onClick() },
         colors = CardDefaults.elevatedCardColors(
-            containerColor = containerColor
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -99,7 +66,7 @@ fun Itemcard(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier
-                        .weight(1.2f) // more space for the name
+                        .weight(1.2f)
                 )
 
                 // Quantity is narrow and right aligned
@@ -132,7 +99,7 @@ fun Itemcard(
             ) {
                 IconButton(
                     onClick = onEditClick,
-                    modifier = Modifier.size(32.dp) // smaller tap area than default 48.dp
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Edit,

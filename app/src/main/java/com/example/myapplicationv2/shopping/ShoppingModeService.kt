@@ -72,8 +72,7 @@ class ShoppingModeService : Service() {
             ACTION_START -> {
                 Log.d("ShoppingModeService", "ACTION_START received")
 
-                // If the service is started from notification / geofence (not from ViewModel),
-                // we still want prefs to reflect that Shopping Mode is ON (manual = false).
+                // Reflect that Shopping Mode is ON
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = true, manual = false)
                 }
@@ -85,7 +84,7 @@ class ShoppingModeService : Service() {
             ACTION_STOP -> {
                 Log.d("ShoppingModeService", "ACTION_STOP received")
 
-                // Make sure prefs say OFF
+                // Reflect that Shopping Mode is OFF
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = false, manual = false)
                 }
@@ -101,7 +100,7 @@ class ShoppingModeService : Service() {
             ACTION_SNOOZE -> {
                 Log.d("ShoppingModeService", "ACTION_SNOOZE received")
 
-                // Schedule restart in 10 minutes (inexact alarm, no special permission needed)
+                // Schedule service restart in SNOOZE_DURATION_MS
                 val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
                 val resumeIntent = Intent(this, ShoppingModeService::class.java).apply {
                     action = ACTION_START
@@ -116,14 +115,13 @@ class ShoppingModeService : Service() {
                 val triggerAtMillis = System.currentTimeMillis() + SNOOZE_DURATION_MS
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // Inexact, allowed without SCHEDULE_EXACT_ALARM
+                    // Inexact, no special permission needed
                     alarmManager.set(
                         AlarmManager.RTC_WAKEUP,
                         triggerAtMillis,
                         resumePendingIntent
                     )
                 } else {
-                    // On older versions you can still use exact if you want
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         triggerAtMillis,
@@ -131,7 +129,7 @@ class ShoppingModeService : Service() {
                     )
                 }
 
-                // Keep Shopping Mode "on" in prefs, but pause the service and remove the notification
+                // Keep Shopping Mode logical state "on" in prefs, but pause the service
                 stopLocationUpdates()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -518,10 +516,6 @@ class ShoppingModeService : Service() {
         }
     }
 
-    /**
-     * Expand a base Places type into a list of related types to search together.
-     * All strings here must be valid Places API types.
-     */
     private fun expandPlacesTypes(baseType: String): List<String> {
         return when (baseType) {
             "Supermarket" -> listOf(
@@ -575,10 +569,6 @@ class ShoppingModeService : Service() {
         return result[1]
     }
 
-    /**
-     * Returns the smallest absolute angle difference between two headings in degrees.
-     * Both inputs are in degrees, 0..360.
-     */
     private fun smallestAngleDiff(aDeg: Float, bDeg: Float): Float {
         var diff = (aDeg - bDeg) % 360f
         if (diff < -180f) diff += 360f
@@ -608,6 +598,7 @@ class ShoppingModeService : Service() {
         placeLat: Double,
         placeLng: Double
     ) {
+        // Key that identifies "this place for this category"
         val notificationKey = "$categoryName|$placeName"
         val now = System.currentTimeMillis()
         val lastTime = lastNotificationTimestamps[notificationKey]
@@ -620,6 +611,7 @@ class ShoppingModeService : Service() {
             return
         }
 
+        // Update the timestamp since we are going to notify now
         lastNotificationTimestamps[notificationKey] = now
 
         val bulletItems = if (itemNames.isEmpty()) {
@@ -636,14 +628,9 @@ class ShoppingModeService : Service() {
 
         Log.d("ShoppingModeService", "Showing nearby-store notification: $bigText")
 
-        // Intent to open the app and highlight the items
+        // Intent to open the app (no more highlight extras)
         val launchIntent = Intent(this, com.example.myapplicationv2.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_HIGHLIGHT_FROM_NOTIFICATION, true)
-            putIntegerArrayListExtra(
-                EXTRA_HIGHLIGHT_ITEM_IDS,
-                ArrayList(itemIds)
-            )
         }
 
         val contentPendingIntent = PendingIntent.getActivity(
@@ -711,10 +698,6 @@ class ShoppingModeService : Service() {
         const val NOTIFICATION_ID = 2001
         private const val UPDATE_INTERVAL_MS: Long = 10 * 1000   // every 10 seconds
         private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
-        const val EXTRA_HIGHLIGHT_FROM_NOTIFICATION =
-            "com.example.myapplicationv2.EXTRA_HIGHLIGHT_FROM_NOTIFICATION"
-        const val EXTRA_HIGHLIGHT_ITEM_IDS =
-            "com.example.myapplicationv2.EXTRA_HIGHLIGHT_ITEM_IDS"
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
