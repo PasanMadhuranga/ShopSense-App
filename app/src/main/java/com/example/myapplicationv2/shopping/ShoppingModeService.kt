@@ -44,7 +44,6 @@ class ShoppingModeService : Service() {
 
     @Inject lateinit var toBuyItemRepository: ToBuyItemRepository
     @Inject lateinit var categoryRepository: CategoryRepository
-
     @Inject lateinit var homePrefs: HomePrefs
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -100,38 +99,42 @@ class ShoppingModeService : Service() {
             ACTION_SNOOZE -> {
                 Log.d("ShoppingModeService", "ACTION_SNOOZE received")
 
-                // Schedule service restart in SNOOZE_DURATION_MS
-                val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
-                val resumeIntent = Intent(this, ShoppingModeService::class.java).apply {
-                    action = ACTION_START
+                // 1) Turn toggle OFF via prefs
+                serviceScope.launch {
+                    homePrefs.setShoppingMode(on = false, manual = false)
                 }
-                val resumePendingIntent = PendingIntent.getService(
-                    this,
-                    REQUEST_CODE_RESUME,
-                    resumeIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
+                // Also tell UI directly
+                sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
 
-                val triggerAtMillis = System.currentTimeMillis() + SNOOZE_DURATION_MS
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // Inexact, no special permission needed
-                    alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAtMillis,
-                        resumePendingIntent
-                    )
-                } else {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAtMillis,
-                        resumePendingIntent
-                    )
-                }
-
-                // Keep Shopping Mode logical state "on" in prefs, but pause the service
+                // 2) Stop work and foreground
                 stopLocationUpdates()
                 stopForeground(STOP_FOREGROUND_REMOVE)
+
+                // 3) Schedule a broadcast for restart after snooze
+                val alarm = getSystemService(ALARM_SERVICE) as AlarmManager
+                val restartIntent = Intent(this, ShoppingModeRestartReceiver::class.java)
+                val pi = PendingIntent.getBroadcast(
+                    this,
+                    REQUEST_CODE_SNOOZE_RESTART,
+                    restartIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+
+                val triggerAt = System.currentTimeMillis() + SNOOZE_DURATION_MS
+
+                // Use inexact alarm to avoid SCHEDULE_EXACT_ALARM permission
+                alarm.set(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt,
+                    pi
+                )
+
+                Log.d(
+                    "ShoppingModeService",
+                    "Snooze scheduled in ${SNOOZE_DURATION_MS} ms via BroadcastReceiver"
+                )
+
+                // 4) Stop the service itself (no notification during snooze)
                 stopSelf()
             }
 
@@ -217,7 +220,6 @@ class ShoppingModeService : Service() {
                 }
             }
 
-            // Compute movement bearing only if we have a previous location and reasonable speed
             val previousLocation = lastLocation
             val movementBearing: Float? =
                 if (previousLocation != null && speedMps >= SPEED_MIN_FOR_HEADING) {
@@ -240,7 +242,6 @@ class ShoppingModeService : Service() {
                 movementBearing = movementBearing
             )
 
-            // Update markers for next step
             lastSearchLat = lat
             lastSearchLng = lng
             lastLocation = Location(location)
@@ -598,7 +599,6 @@ class ShoppingModeService : Service() {
         placeLat: Double,
         placeLng: Double
     ) {
-        // Key that identifies "this place for this category"
         val notificationKey = "$categoryName|$placeName"
         val now = System.currentTimeMillis()
         val lastTime = lastNotificationTimestamps[notificationKey]
@@ -611,7 +611,6 @@ class ShoppingModeService : Service() {
             return
         }
 
-        // Update the timestamp since we are going to notify now
         lastNotificationTimestamps[notificationKey] = now
 
         val bulletItems = if (itemNames.isEmpty()) {
@@ -628,7 +627,6 @@ class ShoppingModeService : Service() {
 
         Log.d("ShoppingModeService", "Showing nearby-store notification: $bigText")
 
-        // Intent to open the app (no more highlight extras)
         val launchIntent = Intent(this, com.example.myapplicationv2.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -701,8 +699,11 @@ class ShoppingModeService : Service() {
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
-        const val SNOOZE_DURATION_MS = 30 * 1000L
-        const val REQUEST_CODE_RESUME = 5001
+
+        // For real use you probably want 10 * 60 * 1000L (10 minutes)
+        const val SNOOZE_DURATION_MS = 30 * 1000L   // 30s for testing
+
+        const val REQUEST_CODE_SNOOZE_RESTART = 5001
     }
 
     private data class NearbyPlace(
