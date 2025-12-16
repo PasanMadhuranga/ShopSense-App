@@ -255,15 +255,19 @@ class ShoppingModeService : Service() {
 
         val text = if (isSnoozed) "Shopping Mode is snoozed" else "Shopping Mode is active"
 
-        return NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("ShopSense")
             .setContentText(text)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(R.mipmap.ic_launcher, "Snooze", snoozePendingIntent)
             .addAction(R.mipmap.ic_launcher, "Off", stopPendingIntent)
-            .build()
+
+        if (!isSnoozed) {
+            builder.addAction(R.mipmap.ic_launcher, "Snooze", snoozePendingIntent)
+        }
+
+        return builder.build()
     }
 
     // ---- Your existing Places logic stays the same below this point ----
@@ -497,7 +501,7 @@ class ShoppingModeService : Service() {
         const val SPEED_MIN_FOR_HEADING = 0.5f
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
 
-        const val SNOOZE_DURATION_MS = 5 * 60 * 1000L  // test value (5 minutes)
+        const val SNOOZE_DURATION_MS = 2 * 60 * 1000L  // test value (2 minutes)
     }
 
     private data class NearbyPlace(
