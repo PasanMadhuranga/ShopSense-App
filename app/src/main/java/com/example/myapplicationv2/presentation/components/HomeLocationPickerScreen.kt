@@ -20,10 +20,9 @@ fun HomeLocationPickerScreen(
     onConfirm: (lat: Double, lng: Double) -> Unit,
     onCancel: () -> Unit
 ) {
-    // If home already set, start from there. Otherwise, some default (Colombo here).
+    // If home already set, start from there. Otherwise Colombo.
     val defaultLatLng = LatLng(initialLat ?: 6.9271, initialLng ?: 79.8612)
 
-    // MarkerState is how we represent the pin now.
     var markerState by remember {
         mutableStateOf<MarkerState?>(null)
     }
@@ -63,7 +62,7 @@ fun HomeLocationPickerScreen(
                             onConfirm(pos.latitude, pos.longitude)
                         }
                     },
-                    enabled = markerState != null // disabled until user drops a pin
+                    enabled = markerState != null
                 ) {
                     Text("Save as Home")
                 }

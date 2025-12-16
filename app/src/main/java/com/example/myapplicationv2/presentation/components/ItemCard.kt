@@ -49,7 +49,6 @@ fun Itemcard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left side: checkbox + text fields
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
@@ -59,7 +58,6 @@ fun Itemcard(
                     onCheckedChange = { onCheckBoxClick() }
                 )
 
-                // Name gets most of the flexible space
                 Text(
                     text = toBuyItem.name,
                     maxLines = 1,
@@ -69,7 +67,6 @@ fun Itemcard(
                         .weight(1.2f)
                 )
 
-                // Quantity is narrow and right aligned
                 Text(
                     text = toBuyItem.quantity.toString(),
                     style = MaterialTheme.typography.bodyMedium,
@@ -79,7 +76,6 @@ fun Itemcard(
                         .width(16.dp)
                 )
 
-                // Category gets some flexible space but less than name
                 Text(
                     text = categories.find { it.id == toBuyItem.categoryId }?.name ?: "",
                     maxLines = 1,
@@ -92,7 +88,6 @@ fun Itemcard(
                 )
             }
 
-            // Right side: compact icons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)

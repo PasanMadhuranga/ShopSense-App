@@ -15,8 +15,6 @@ class ShoppingModeRestartReceiver : BroadcastReceiver() {
             action = ShoppingModeService.ACTION_START
         }
 
-        // Important: use startForegroundService so that ShoppingModeService
-        // is allowed to call startForeground() without ForegroundServiceStartNotAllowedException
         ContextCompat.startForegroundService(appContext, serviceIntent)
     }
 }

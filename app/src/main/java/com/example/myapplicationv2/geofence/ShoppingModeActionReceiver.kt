@@ -22,7 +22,6 @@ class ShoppingModeActionReceiver : BroadcastReceiver() {
 
         when (action) {
             ACTION_YES -> {
-                // Update prefs: ON, manual = false (started by geofence / notification)
                 CoroutineScope(Dispatchers.IO).launch {
                     prefs.setShoppingMode(on = true, manual = false)
                 }
@@ -34,7 +33,6 @@ class ShoppingModeActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_NO -> {
-                // Update prefs: OFF, manual = false
                 CoroutineScope(Dispatchers.IO).launch {
                     prefs.setShoppingMode(on = false, manual = false)
                 }
@@ -46,7 +44,6 @@ class ShoppingModeActionReceiver : BroadcastReceiver() {
             }
         }
 
-        // Dismiss the "Activate Shopping Mode?" notification
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }
 

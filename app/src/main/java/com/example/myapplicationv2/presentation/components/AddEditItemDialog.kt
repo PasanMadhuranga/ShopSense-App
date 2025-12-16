@@ -80,7 +80,6 @@ fun AddEditItemDialog(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Category dropdown
                     ExposedDropdownMenuBox(
                         expanded = expanded,
                         onExpandedChange = { expanded = it }

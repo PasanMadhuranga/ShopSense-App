@@ -108,7 +108,6 @@ fun HomeScreen() {
         }
     }
 
-    // "Use current location" permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -126,7 +125,6 @@ fun HomeScreen() {
         }
     }
 
-    // NEW: permission launcher for "Pick on map"
     val mapPickLocationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->

@@ -92,25 +92,23 @@ class ShoppingModeService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
 
-                // Let UI know that the service stopped, so the toggle can turn off
                 sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
             }
 
             ACTION_SNOOZE -> {
                 Log.d("ShoppingModeService", "ACTION_SNOOZE received")
 
-                // 1) Turn toggle OFF via prefs
+                // Turn toggle OFF via prefs
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = false, manual = false)
                 }
-                // Also tell UI directly
                 sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
 
-                // 2) Stop work and foreground
+                // Stop work and foreground
                 stopLocationUpdates()
                 stopForeground(STOP_FOREGROUND_REMOVE)
 
-                // 3) Schedule a broadcast for restart after snooze
+                // Schedule a broadcast for restart after snooze
                 val alarm = getSystemService(ALARM_SERVICE) as AlarmManager
                 val restartIntent = Intent(this, ShoppingModeRestartReceiver::class.java)
                 val pi = PendingIntent.getBroadcast(
@@ -122,7 +120,6 @@ class ShoppingModeService : Service() {
 
                 val triggerAt = System.currentTimeMillis() + SNOOZE_DURATION_MS
 
-                // Use inexact alarm to avoid SCHEDULE_EXACT_ALARM permission
                 alarm.set(
                     AlarmManager.RTC_WAKEUP,
                     triggerAt,
@@ -134,7 +131,6 @@ class ShoppingModeService : Service() {
                     "Snooze scheduled in ${SNOOZE_DURATION_MS} ms via BroadcastReceiver"
                 )
 
-                // 4) Stop the service itself (no notification during snooze)
                 stopSelf()
             }
 
@@ -409,7 +405,7 @@ class ShoppingModeService : Service() {
             put("includedTypes", JSONArray().apply {
                 includedTypes.forEach { put(it) }
             })
-            put("maxResultCount", 10)
+            put("maxResultCount", 5)
             put("locationRestriction", JSONObject().apply {
                 put("circle", JSONObject().apply {
                     put("center", JSONObject().apply {
@@ -522,7 +518,6 @@ class ShoppingModeService : Service() {
             "Supermarket" -> listOf(
                 "supermarket",
                 "grocery_store",
-                "department_store"
             )
 
             "Pharmacy" -> listOf(
@@ -544,7 +539,6 @@ class ShoppingModeService : Service() {
             )
 
             "Stationery" -> listOf(
-                "stationery_store",
                 "book_store"
             )
 
@@ -694,14 +688,14 @@ class ShoppingModeService : Service() {
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
         const val ACTION_SNOOZE = "com.example.myapplicationv2.shopping.ACTION_SNOOZE"
         const val NOTIFICATION_ID = 2001
-        private const val UPDATE_INTERVAL_MS: Long = 10 * 1000   // every 10 seconds
-        private const val MIN_DISTANCE_METERS = 100f            // or after 100 m moved
+        private const val UPDATE_INTERVAL_MS: Long = 10 * 1000  // every 10 seconds
+        private const val MIN_DISTANCE_METERS = 100f  // or after 100 m moved
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
 
-        // For real use you probably want 10 * 60 * 1000L (10 minutes)
-        const val SNOOZE_DURATION_MS = 5 * 60 * 1000L   // 5 minutes for testing
+        // For real use 10 minutes
+        const val SNOOZE_DURATION_MS = 1 * 60 * 1000L   // 1 minute for testing
 
         const val REQUEST_CODE_SNOOZE_RESTART = 5001
     }

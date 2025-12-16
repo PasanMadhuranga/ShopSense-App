@@ -57,7 +57,7 @@ class HomePrefs(private val context: Context) {
         }
     }
 
-    // New: set shopping mode flags
+    // set shopping mode flags
     suspend fun setShoppingMode(on: Boolean, manual: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[HomeKeys.SHOPPING_MODE_ON] = on

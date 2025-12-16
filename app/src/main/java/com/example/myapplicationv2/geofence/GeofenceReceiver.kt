@@ -54,13 +54,13 @@ class GeofenceReceiver : BroadcastReceiver() {
                     }
                     context.startService(stopIntent)
 
-                    // Clear the flags as well
+                    // Clear the flags
                     runBlocking {
                         prefs.setShoppingMode(on = false, manual = false)
                     }
                 }
                 // If isOn && isManual, user chose to keep it on with the toggle,
-                // so we do nothing here.
+                // so do nothing
             }
         }
     }

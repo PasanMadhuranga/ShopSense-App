@@ -19,7 +19,7 @@ data class ToBuyItem(
     @PrimaryKey(autoGenerate = true)
     val id: Int? = null,
     val name: String,
-    val categoryId: Int, // foreign key
+    val categoryId: Int,
     val quantity: Int,
     val checked: Boolean
 )
