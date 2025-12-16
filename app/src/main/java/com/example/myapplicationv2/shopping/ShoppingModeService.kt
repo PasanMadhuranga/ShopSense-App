@@ -114,17 +114,17 @@ class ShoppingModeService : Service() {
                 snoozeJob = null
                 isSnoozed = true
 
-                // Turn OFF toggle reliably (do it from a coroutine that won't be cancelled by stopSelf, since we DO NOT stopSelf now)
+                // Turn OFF toggle reliably
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = false, manual = false)
                 }
                 sendBroadcast(Intent(ACTION_UI_STOPPED))
 
-                // Pause location updates, keep service alive in foreground with "Snoozed" notification
+                // Pause location updates
                 stopLocationUpdates()
                 startForeground(NOTIFICATION_ID, buildOngoingNotification(isSnoozed = true))
 
-                // Resume after delay inside the same service (most reliable)
+                // Resume after delay inside the same service
                 snoozeJob = serviceScope.launch {
                     Log.d(TAG, "Snoozing for ${SNOOZE_DURATION_MS} ms")
                     delay(SNOOZE_DURATION_MS)
@@ -166,7 +166,6 @@ class ShoppingModeService : Service() {
 
         if (!fine && !coarse) {
             Log.w(TAG, "No location permission, stopping updates")
-            // Keep service running but reflect OFF to avoid UI mismatch
             serviceScope.launch { homePrefs.setShoppingMode(on = false, manual = false) }
             sendBroadcast(Intent(ACTION_UI_STOPPED))
             return
@@ -269,8 +268,6 @@ class ShoppingModeService : Service() {
 
         return builder.build()
     }
-
-    // ---- Your existing Places logic stays the same below this point ----
 
     private suspend fun performNearbySearchAndNotify(
         lat: Double,
