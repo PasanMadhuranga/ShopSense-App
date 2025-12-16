@@ -1,7 +1,6 @@
 package com.example.myapplicationv2.shopping
 
 import android.Manifest
-import android.app.AlarmManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -27,14 +26,16 @@ import dagger.hilt.android.AndroidEntryPoint
 import jakarta.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,11 +50,15 @@ class ShoppingModeService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+
     private val httpClient = OkHttpClient()
     private var lastSearchLat: Double? = null
     private var lastSearchLng: Double? = null
     private var lastLocation: Location? = null
     private val lastNotificationTimestamps = mutableMapOf<String, Long>()
+
+    private var snoozeJob: Job? = null
+    private var isSnoozed: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -63,27 +68,33 @@ class ShoppingModeService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        snoozeJob?.cancel()
         serviceScope.cancel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                Log.d("ShoppingModeService", "ACTION_START received")
+                Log.d(TAG, "ACTION_START received")
+                isSnoozed = false
+                snoozeJob?.cancel()
+                snoozeJob = null
 
-                // Reflect that Shopping Mode is ON
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = true, manual = false)
                 }
 
-                startForeground(NOTIFICATION_ID, buildOngoingNotification())
+                startForeground(NOTIFICATION_ID, buildOngoingNotification(isSnoozed = false))
                 startLocationUpdates()
             }
 
             ACTION_STOP -> {
-                Log.d("ShoppingModeService", "ACTION_STOP received")
+                Log.d(TAG, "ACTION_STOP received")
 
-                // Reflect that Shopping Mode is OFF
+                isSnoozed = false
+                snoozeJob?.cancel()
+                snoozeJob = null
+
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = false, manual = false)
                 }
@@ -92,52 +103,49 @@ class ShoppingModeService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
 
-                sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
+                sendBroadcast(Intent(ACTION_UI_STOPPED))
             }
 
             ACTION_SNOOZE -> {
-                Log.d("ShoppingModeService", "ACTION_SNOOZE received")
+                Log.d(TAG, "ACTION_SNOOZE received")
 
-                // Turn toggle OFF via prefs
+                // Cancel any existing snooze timer and enter snooze state
+                snoozeJob?.cancel()
+                snoozeJob = null
+                isSnoozed = true
+
+                // Turn OFF toggle reliably (do it from a coroutine that won't be cancelled by stopSelf, since we DO NOT stopSelf now)
                 serviceScope.launch {
                     homePrefs.setShoppingMode(on = false, manual = false)
                 }
-                sendBroadcast(Intent("SHOPPING_MODE_STOPPED"))
+                sendBroadcast(Intent(ACTION_UI_STOPPED))
 
-                // Stop work and foreground
+                // Pause location updates, keep service alive in foreground with "Snoozed" notification
                 stopLocationUpdates()
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                startForeground(NOTIFICATION_ID, buildOngoingNotification(isSnoozed = true))
 
-                // Schedule a broadcast for restart after snooze
-                val alarm = getSystemService(ALARM_SERVICE) as AlarmManager
-                val restartIntent = Intent(this, ShoppingModeRestartReceiver::class.java)
-                val pi = PendingIntent.getBroadcast(
-                    this,
-                    REQUEST_CODE_SNOOZE_RESTART,
-                    restartIntent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
+                // Resume after delay inside the same service (most reliable)
+                snoozeJob = serviceScope.launch {
+                    Log.d(TAG, "Snoozing for ${SNOOZE_DURATION_MS} ms")
+                    delay(SNOOZE_DURATION_MS)
 
-                val triggerAt = System.currentTimeMillis() + SNOOZE_DURATION_MS
+                    Log.d(TAG, "Snooze finished, resuming Shopping Mode")
+                    isSnoozed = false
 
-                alarm.set(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAt,
-                    pi
-                )
+                    homePrefs.setShoppingMode(on = true, manual = false)
 
-                Log.d(
-                    "ShoppingModeService",
-                    "Snooze scheduled in ${SNOOZE_DURATION_MS} ms via BroadcastReceiver"
-                )
-
-                stopSelf()
+                    withContext(Dispatchers.Main) {
+                        startForeground(NOTIFICATION_ID, buildOngoingNotification(isSnoozed = false))
+                        startLocationUpdates()
+                    }
+                }
             }
 
             else -> {
-                Log.d("ShoppingModeService", "Unknown action: ${intent?.action}")
+                Log.d(TAG, "Unknown action: ${intent?.action}")
             }
         }
+
         return START_STICKY
     }
 
@@ -153,21 +161,18 @@ class ShoppingModeService : Service() {
     }
 
     private fun startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.w("ShoppingModeService", "No location permission, stopping service")
-            stopSelf()
+        val fine = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (!fine && !coarse) {
+            Log.w(TAG, "No location permission, stopping updates")
+            // Keep service running but reflect OFF to avoid UI mismatch
+            serviceScope.launch { homePrefs.setShoppingMode(on = false, manual = false) }
+            sendBroadcast(Intent(ACTION_UI_STOPPED))
             return
         }
 
-        Log.d("ShoppingModeService", "Requesting location updates")
+        Log.d(TAG, "Requesting location updates")
 
         val request = LocationRequest.Builder(
             Priority.PRIORITY_BALANCED_POWER_ACCURACY,
@@ -184,20 +189,17 @@ class ShoppingModeService : Service() {
     }
 
     private fun stopLocationUpdates() {
-        runCatching {
-            fusedLocationClient.removeLocationUpdates(locationCallback)
-        }
+        runCatching { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
     private fun handleNewLocation(location: Location) {
+        if (isSnoozed) return
+
         val lat = location.latitude
         val lng = location.longitude
         val speedMps = location.speed
 
-        Log.d(
-            "ShoppingModeService",
-            "New location: $lat,$lng speed=${speedMps} m/s"
-        )
+        Log.d(TAG, "New location: $lat,$lng speed=${speedMps} m/s")
 
         serviceScope.launch {
             val prevLat = lastSearchLat
@@ -205,29 +207,14 @@ class ShoppingModeService : Service() {
 
             if (prevLat != null && prevLng != null) {
                 val dist = distanceMeters(prevLat, prevLng, lat, lng)
-                Log.d("ShoppingModeService", "Distance from last search location: $dist m")
-
-                if (dist < MIN_DISTANCE_METERS) {
-                    Log.d(
-                        "ShoppingModeService",
-                        "Movement < $MIN_DISTANCE_METERS m, skipping search"
-                    )
-                    return@launch
-                }
+                if (dist < MIN_DISTANCE_METERS) return@launch
             }
 
             val previousLocation = lastLocation
             val movementBearing: Float? =
                 if (previousLocation != null && speedMps >= SPEED_MIN_FOR_HEADING) {
                     previousLocation.bearingTo(location)
-                } else {
-                    null
-                }
-
-            Log.d(
-                "ShoppingModeService",
-                "Computed movementBearing=$movementBearing"
-            )
+                } else null
 
             val radiusMeters = computeSearchRadiusMeters(speedMps)
 
@@ -253,62 +240,53 @@ class ShoppingModeService : Service() {
         }
     }
 
+    private fun buildOngoingNotification(isSnoozed: Boolean): Notification {
+        val stopIntent = Intent(this, ShoppingModeService::class.java).apply { action = ACTION_STOP }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val snoozeIntent = Intent(this, ShoppingModeService::class.java).apply { action = ACTION_SNOOZE }
+        val snoozePendingIntent = PendingIntent.getService(
+            this, 1, snoozeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val text = if (isSnoozed) "Shopping Mode is snoozed" else "Shopping Mode is active"
+
+        return NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("ShopSense")
+            .setContentText(text)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(R.mipmap.ic_launcher, "Snooze", snoozePendingIntent)
+            .addAction(R.mipmap.ic_launcher, "Off", stopPendingIntent)
+            .build()
+    }
+
+    // ---- Your existing Places logic stays the same below this point ----
+
     private suspend fun performNearbySearchAndNotify(
         lat: Double,
         lng: Double,
         radiusMeters: Int,
         movementBearing: Float?
     ) {
-        Log.d("ShoppingModeService", "performNearbySearchAndNotify() called with radius=$radiusMeters")
-
         val items: List<ToBuyItem> = toBuyItemRepository
             .getAllToBuyItems()
             .first()
             .filter { !it.checked }
 
-        Log.d("ShoppingModeService", "Unchecked items count: ${items.size}")
+        if (items.isEmpty()) return
 
-        if (items.isEmpty()) {
-            Log.d("ShoppingModeService", "No unchecked items, skipping search")
-            return
-        }
-
-        val categories: List<Category> = categoryRepository
-            .getAllCategories()
-            .first()
-
-        Log.d("ShoppingModeService", "Categories count: ${categories.size}")
-
-        val itemsByCategoryId: Map<Int?, List<ToBuyItem>> =
-            items.groupBy { it.categoryId }
-
-        Log.d(
-            "ShoppingModeService",
-            "Items grouped into ${itemsByCategoryId.size} category groups"
-        )
+        val categories: List<Category> = categoryRepository.getAllCategories().first()
+        val itemsByCategoryId: Map<Int?, List<ToBuyItem>> = items.groupBy { it.categoryId }
 
         for ((categoryId, catItems) in itemsByCategoryId) {
-            val category = categories.find { it.id == categoryId }
-            if (category == null) {
-                Log.w(
-                    "ShoppingModeService",
-                    "No Category found for categoryId=$categoryId, skipping group"
-                )
-                continue
-            }
-
-            if (category.name == "Other") {
-                Log.d(
-                    "ShoppingModeService",
-                    "Skipping search for 'Other' category"
-                )
-                continue
-            }
-
-            Log.d(
-                "ShoppingModeService",
-                "Processing category='${category.name}' with ${catItems.size} items"
-            )
+            val category = categories.find { it.id == categoryId } ?: continue
+            if (category.name == "Other") continue
 
             val place = searchClosestPlace(
                 lat = lat,
@@ -316,77 +294,18 @@ class ShoppingModeService : Service() {
                 type = category.name,
                 radiusMeters = radiusMeters,
                 movementBearingDeg = movementBearing
-            )
-
-            if (place == null) {
-                Log.d(
-                    "ShoppingModeService",
-                    "No nearby place found for ${category.name}, skipping"
-                )
-                continue
-            }
-
-            val itemNames = catItems.map { item -> item.name }
-
-            Log.d(
-                "ShoppingModeService",
-                "Closest place for '${category.name}': ${place.name}, " +
-                        "distance=${place.distanceMeters} m, items=${itemNames.joinToString()}"
-            )
+            ) ?: continue
 
             showNearbyStoreNotification(
                 categoryName = category.name,
                 placeName = place.name,
                 distanceMeters = place.distanceMeters,
-                itemNames = itemNames,
+                itemNames = catItems.map { it.name },
                 itemIds = catItems.mapNotNull { it.id },
                 placeLat = place.lat,
                 placeLng = place.lng
             )
         }
-    }
-
-    private fun buildOngoingNotification(): Notification {
-        val stopIntent = Intent(this, ShoppingModeService::class.java).apply {
-            action = ACTION_STOP
-        }
-
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            0,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val snoozeIntent = Intent(this, ShoppingModeService::class.java).apply {
-            action = ACTION_SNOOZE
-        }
-
-        val snoozePendingIntent = PendingIntent.getService(
-            this,
-            1,
-            snoozeIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, ShopSenseApp.SHOPPING_MODE_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("ShopSense")
-            .setContentText("Shopping Mode is active")
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setContentIntent(stopPendingIntent)
-            .addAction(
-                R.mipmap.ic_launcher,
-                "Snooze",
-                snoozePendingIntent
-            )
-            .addAction(
-                R.mipmap.ic_launcher,
-                "Off",
-                stopPendingIntent
-            )
-            .build()
     }
 
     private suspend fun searchClosestPlace(
@@ -398,13 +317,10 @@ class ShoppingModeService : Service() {
     ): NearbyPlace? {
         val apiKey = getString(R.string.google_places_web_key)
         val url = "https://places.googleapis.com/v1/places:searchNearby"
-
         val includedTypes = expandPlacesTypes(type)
 
         val bodyJson = JSONObject().apply {
-            put("includedTypes", JSONArray().apply {
-                includedTypes.forEach { put(it) }
-            })
+            put("includedTypes", JSONArray().apply { includedTypes.forEach { put(it) } })
             put("maxResultCount", 5)
             put("locationRestriction", JSONObject().apply {
                 put("circle", JSONObject().apply {
@@ -416,9 +332,6 @@ class ShoppingModeService : Service() {
                 })
             })
         }
-
-        Log.d("ShoppingModeService", "Calling Places Nearby (New): $url")
-        Log.d("ShoppingModeService", "Request body: $bodyJson")
 
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val requestBody = bodyJson.toString().toRequestBody(mediaType)
@@ -433,81 +346,37 @@ class ShoppingModeService : Service() {
         return withContext(Dispatchers.IO) {
             try {
                 httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.w("ShoppingModeService", "Places (New) response not successful: ${response.code}")
-                        val errorBody = response.body?.string()
-                        Log.w("ShoppingModeService", "Error body: $errorBody")
-                        return@withContext null
-                    }
-
-                    val body = response.body?.string() ?: run {
-                        Log.w("ShoppingModeService", "Places (New) response body is null")
-                        return@withContext null
-                    }
-
+                    if (!response.isSuccessful) return@withContext null
+                    val body = response.body?.string() ?: return@withContext null
                     val json = JSONObject(body)
-                    Log.d("ShoppingModeService", "Places (New) raw response: $json")
 
-                    val places = json.optJSONArray("places")
-                    if (places == null || places.length() == 0) {
-                        Log.d("ShoppingModeService", "No Places (New) results")
-                        return@withContext null
-                    }
+                    val places = json.optJSONArray("places") ?: return@withContext null
+                    if (places.length() == 0) return@withContext null
 
                     var best: NearbyPlace? = null
                     for (i in 0 until places.length()) {
                         val placeObj = places.getJSONObject(i)
 
-                        val name = placeObj
-                            .optJSONObject("displayName")
-                            ?.optString("text")
-                            ?: continue
-
+                        val name = placeObj.optJSONObject("displayName")?.optString("text") ?: continue
                         val locObj = placeObj.getJSONObject("location")
                         val placeLat = locObj.getDouble("latitude")
                         val placeLng = locObj.getDouble("longitude")
 
                         val dist = distanceMeters(lat, lng, placeLat, placeLng).toInt()
-                        Log.d("ShoppingModeService", "Candidate place: $name, distance=$dist m")
 
                         if (movementBearingDeg != null) {
                             val bearingToPlace = bearingBetween(lat, lng, placeLat, placeLng)
                             val angleDiff = smallestAngleDiff(movementBearingDeg, bearingToPlace)
-
-                            Log.d(
-                                "ShoppingModeService",
-                                "Candidate: $name, dist=$dist, bearingToPlace=$bearingToPlace, " +
-                                        "movementBearing=$movementBearingDeg, angleDiff=$angleDiff"
-                            )
-
-                            if (angleDiff > HEADING_MAX_ANGLE_DEG) {
-                                continue
-                            }
-                        } else {
-                            Log.d(
-                                "ShoppingModeService",
-                                "Candidate: $name, dist=$dist (no heading filter applied)"
-                            )
+                            if (angleDiff > HEADING_MAX_ANGLE_DEG) continue
                         }
 
                         if (best == null || dist < best!!.distanceMeters) {
-                            best = NearbyPlace(
-                                name = name,
-                                distanceMeters = dist,
-                                lat = placeLat,
-                                lng = placeLng
-                            )
+                            best = NearbyPlace(name, dist, placeLat, placeLng)
                         }
                     }
-
-                    Log.d(
-                        "ShoppingModeService",
-                        "Best place for types=${includedTypes.joinToString()} -> $best"
-                    )
                     best
                 }
             } catch (e: Exception) {
-                Log.e("ShoppingModeService", "Error calling Places API (New)", e)
                 null
             }
         }
@@ -515,50 +384,18 @@ class ShoppingModeService : Service() {
 
     private fun expandPlacesTypes(baseType: String): List<String> {
         return when (baseType) {
-            "Supermarket" -> listOf(
-                "supermarket",
-                "grocery_store",
-            )
-
-            "Pharmacy" -> listOf(
-                "pharmacy"
-            )
-
-            "Bakery" -> listOf(
-                "bakery",
-                "cafe"
-            )
-
-            "Electronics" -> listOf(
-                "electronics_store"
-            )
-
-            "Household" -> listOf(
-                "home_goods_store",
-                "furniture_store"
-            )
-
-            "Stationery" -> listOf(
-                "book_store"
-            )
-
-            "Pet Store" -> listOf(
-                "pet_store",
-                "veterinary_care"
-            )
-
+            "Supermarket" -> listOf("supermarket", "grocery_store")
+            "Pharmacy" -> listOf("pharmacy")
+            "Bakery" -> listOf("bakery", "cafe")
+            "Electronics" -> listOf("electronics_store")
+            "Household" -> listOf("home_goods_store", "furniture_store")
+            "Stationery" -> listOf("book_store")
+            "Pet Store" -> listOf("pet_store", "veterinary_care")
             else -> listOf(baseType)
-        }.also {
-            Log.d("ShoppingModeService", "expandPlacesTypes('$baseType') -> $it")
         }
     }
 
-    private fun bearingBetween(
-        lat1: Double,
-        lng1: Double,
-        lat2: Double,
-        lng2: Double
-    ): Float {
+    private fun bearingBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Float {
         val result = FloatArray(2)
         Location.distanceBetween(lat1, lng1, lat2, lng2, result)
         return result[1]
@@ -571,12 +408,7 @@ class ShoppingModeService : Service() {
         return kotlin.math.abs(diff)
     }
 
-    private fun distanceMeters(
-        lat1: Double,
-        lng1: Double,
-        lat2: Double,
-        lng2: Double
-    ): Float {
+    private fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Float {
         val result = FloatArray(1)
         Location.distanceBetween(lat1, lng1, lat2, lng2, result)
         return result[0]
@@ -596,39 +428,20 @@ class ShoppingModeService : Service() {
         val notificationKey = "$categoryName|$placeName"
         val now = System.currentTimeMillis()
         val lastTime = lastNotificationTimestamps[notificationKey]
-
-        if (lastTime != null && now - lastTime < NOTIFY_COOLDOWN_MS) {
-            Log.d(
-                "ShoppingModeService",
-                "Skipping notification for $notificationKey; last shown ${(now - lastTime) / 1000}s ago"
-            )
-            return
-        }
-
+        if (lastTime != null && now - lastTime < NOTIFY_COOLDOWN_MS) return
         lastNotificationTimestamps[notificationKey] = now
-
-        val bulletItems = if (itemNames.isEmpty()) {
-            "• (no items specified)"
-        } else {
-            itemNames.joinToString("\n") { "• $it" }
-        }
 
         val bigText = buildString {
             append("$placeName is $distanceMeters meters away.\n")
             append("You can buy:\n")
-            append(bulletItems)
+            append(itemNames.joinToString("\n") { "• $it" })
         }
-
-        Log.d("ShoppingModeService", "Showing nearby-store notification: $bigText")
 
         val launchIntent = Intent(this, com.example.myapplicationv2.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-
         val contentPendingIntent = PendingIntent.getActivity(
-            this,
-            1,
-            launchIntent,
+            this, 1, launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -638,18 +451,11 @@ class ShoppingModeService : Service() {
         }
 
         val finalIntent =
-            if (navIntent.resolveActivity(packageManager) != null) {
-                navIntent
-            } else {
-                val mapsUrl =
-                    "https://www.google.com/maps/dir/?api=1&destination=$placeLat,$placeLng"
-                Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
-            }
+            if (navIntent.resolveActivity(packageManager) != null) navIntent
+            else Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$placeLat,$placeLng"))
 
         val directionPendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            finalIntent,
+            this, 0, finalIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -661,43 +467,37 @@ class ShoppingModeService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(
-                R.mipmap.ic_launcher,
-                "Show direction",
-                directionPendingIntent
-            )
+            .addAction(R.mipmap.ic_launcher, "Show direction", directionPendingIntent)
             .build()
 
         val hasPermission =
             Build.VERSION.SDK_INT < 33 ||
-                    ActivityCompat.checkSelfPermission(
-                        this,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
+                    ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            NotificationManagerCompat.from(this)
-                .notify(nearbyNotificationId++, notification)
-        } else {
-            Log.w("ShoppingModeService", "Notification permission missing, not showing notification")
+            NotificationManagerCompat.from(this).notify(nearbyNotificationId++, notification)
         }
     }
 
     companion object {
+        private const val TAG = "ShoppingModeService"
+
         const val ACTION_START = "com.example.myapplicationv2.shopping.ACTION_START"
         const val ACTION_STOP = "com.example.myapplicationv2.shopping.ACTION_STOP"
         const val ACTION_SNOOZE = "com.example.myapplicationv2.shopping.ACTION_SNOOZE"
+
+        const val ACTION_UI_STOPPED = "SHOPPING_MODE_STOPPED"
+
         const val NOTIFICATION_ID = 2001
-        private const val UPDATE_INTERVAL_MS: Long = 10 * 1000  // every 10 seconds
-        private const val MIN_DISTANCE_METERS = 100f  // or after 100 m moved
+
+        private const val UPDATE_INTERVAL_MS: Long = 10 * 1000
+        private const val MIN_DISTANCE_METERS = 100f
+
         const val HEADING_MAX_ANGLE_DEG = 60f
         const val SPEED_MIN_FOR_HEADING = 0.5f
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
 
-        // For real use 10 minutes
-        const val SNOOZE_DURATION_MS = 1 * 60 * 1000L   // 1 minute for testing
-
-        const val REQUEST_CODE_SNOOZE_RESTART = 5001
+        const val SNOOZE_DURATION_MS = 5 * 60 * 1000L  // test value (5 minutes)
     }
 
     private data class NearbyPlace(

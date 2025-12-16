@@ -48,10 +48,6 @@
             android:name=".geofence.ShoppingModeActionReceiver"
             android:exported="false" />
 
-        <receiver
-            android:name=".shopping.ShoppingModeRestartReceiver"
-            android:exported="false" />
-
         <!-- Shopping mode foreground service -->
         <service
             android:name=".shopping.ShoppingModeService"
