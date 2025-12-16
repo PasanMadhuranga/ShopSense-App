@@ -1,7 +1,9 @@
 package com.example.myapplicationv2.presentation.home
 
+import android.Manifest
 import android.app.Application
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.material3.SnackbarDuration
 import androidx.core.content.ContextCompat
@@ -52,7 +54,6 @@ class HomeViewModel @Inject constructor(
     val snackbarEventFlow = _snackbarEventFlow.asSharedFlow()
 
     init {
-        // Load saved home location
         viewModelScope.launch {
             homePrefs.homeFlow.collect { saved ->
                 _state.update {
@@ -65,15 +66,27 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        // Keep shopping mode flag in sync with DataStore
         viewModelScope.launch {
             homePrefs.shoppingModeOn.collect { isOn ->
                 _state.update { it.copy(isShoppingModeActive = isOn) }
             }
         }
 
-        // Seed default categories
         seedCategoriesIfEmpty()
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            app,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val coarse = ContextCompat.checkSelfPermission(
+            app,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        return fine || coarse
     }
 
     fun onEvent(event: HomeEvent) {
@@ -101,6 +114,7 @@ class HomeViewModel @Inject constructor(
             is HomeEvent.onCategoryChange -> {
                 _state.update { it.copy(itemCategoryId = event.categoryId) }
             }
+
             is HomeEvent.onNameChange -> {
                 _state.update { it.copy(itemName = event.name) }
             }
@@ -155,10 +169,21 @@ class HomeViewModel @Inject constructor(
             is HomeEvent.OnHomeLocationSelected -> {
                 val radius = state.value.homeRadiusMeters
                 Log.d("HomeViewModel", "Radius: $radius, lat: ${event.lat}, lng: ${event.lng}")
+
                 viewModelScope.launch {
                     try {
                         homePrefs.saveHome(event.lat, event.lng, radius)
-                        geofenceManager.setHomeGeofence(event.lat, event.lng, radius)
+
+                        if (hasLocationPermission()) {
+                            geofenceManager.setHomeGeofence(event.lat, event.lng, radius)
+                        } else {
+                            _snackbarEventFlow.emit(
+                                SnackBarEvent.ShowSnackBar(
+                                    "Home saved, but location permission is needed to enable geofence."
+                                )
+                            )
+                        }
+
                         _state.update {
                             it.copy(
                                 homeLat = event.lat,
@@ -166,6 +191,7 @@ class HomeViewModel @Inject constructor(
                                 isSelectingHomeOnMap = false
                             )
                         }
+
                         _snackbarEventFlow.emit(
                             SnackBarEvent.ShowSnackBar("Home updated from map.")
                         )
@@ -191,7 +217,6 @@ class HomeViewModel @Inject constructor(
     )
 
     private fun startShoppingMode() {
-        // Mark as ON and manual = true (user toggled it)
         viewModelScope.launch {
             homePrefs.setShoppingMode(on = true, manual = true)
         }
@@ -205,7 +230,6 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun stopShoppingMode() {
-        // Mark as OFF and manual = false
         viewModelScope.launch {
             homePrefs.setShoppingMode(on = false, manual = false)
         }
@@ -257,10 +281,20 @@ class HomeViewModel @Inject constructor(
             }
             return
         }
+
         viewModelScope.launch {
             try {
                 homePrefs.saveHome(lat, lng, s.tempRadiusMeters)
-                geofenceManager.setHomeGeofence(lat, lng, s.tempRadiusMeters)
+
+                if (hasLocationPermission()) {
+                    geofenceManager.setHomeGeofence(lat, lng, s.tempRadiusMeters)
+                } else {
+                    _snackbarEventFlow.emit(
+                        SnackBarEvent.ShowSnackBar(
+                            "Home saved, but location permission is needed to enable geofence."
+                        )
+                    )
+                }
 
                 _state.update {
                     it.copy(

@@ -701,7 +701,7 @@ class ShoppingModeService : Service() {
         const val NOTIFY_COOLDOWN_MS = 2 * 60 * 1000L
 
         // For real use you probably want 10 * 60 * 1000L (10 minutes)
-        const val SNOOZE_DURATION_MS = 30 * 1000L   // 30s for testing
+        const val SNOOZE_DURATION_MS = 5 * 60 * 1000L   // 5 minutes for testing
 
         const val REQUEST_CODE_SNOOZE_RESTART = 5001
     }

@@ -67,7 +67,6 @@ fun HomeScreen() {
 
     var showBackgroundLocationDialog by remember { mutableStateOf(false) }
 
-    // Category filter state (null = all)
     var selectedCategoryId by rememberSaveable { mutableStateOf<Int?>(null) }
     var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -75,7 +74,6 @@ fun HomeScreen() {
         state.categories.find { it.id == id }?.name
     } ?: "All categories"
 
-    // Filter + sort: unchecked first, then checked
     val filteredItems = remember(state.toBuyItems, selectedCategoryId) {
         val base = if (selectedCategoryId == null) {
             state.toBuyItems
@@ -84,12 +82,11 @@ fun HomeScreen() {
         }
 
         base.sortedWith(
-            compareBy<ToBuyItem> { it.checked }          // unchecked (false) first
-                .thenBy { it.name.lowercase() }          // optional: by name in each group
+            compareBy<ToBuyItem> { it.checked }
+                .thenBy { it.name.lowercase() }
         )
     }
 
-    // Receiver that listens for SHOPPING_MODE_STOPPED from the service
     val shoppingStoppedReceiver = remember {
         ShoppingModeStatusReceiver {
             onEvent(HomeEvent.SetShoppingModeOff)
@@ -111,7 +108,7 @@ fun HomeScreen() {
         }
     }
 
-    // Launcher to ask for location permission for "Use current location"
+    // "Use current location" permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -122,16 +119,36 @@ fun HomeScreen() {
             onEvent(HomeEvent.UseCurrentLocation)
         } else {
             scope.launch {
-                snackbarHostState.showSnackbar("Location permission is required to use current location.")
+                snackbarHostState.showSnackbar(
+                    "Location permission is required to use current location."
+                )
             }
         }
     }
 
-    // Notification permission launcher (Android 13+)
+    // NEW: permission launcher for "Pick on map"
+    val mapPickLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+        if (fineGranted || coarseGranted) {
+            onEvent(HomeEvent.DismissUpdateHome)
+            onEvent(HomeEvent.StartSelectHomeOnMap)
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Location permission is required to enable the home geofence."
+                )
+            }
+        }
+    }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted || android.os.Build.VERSION.SDK_INT < 33) {
+        if (granted || Build.VERSION.SDK_INT < 33) {
             onEvent(HomeEvent.ToggleShoppingMode)
         } else {
             scope.launch {
@@ -142,7 +159,6 @@ fun HomeScreen() {
         }
     }
 
-    // Location permission launcher specifically for Shopping Mode
     val shoppingLocationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -150,7 +166,7 @@ fun HomeScreen() {
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
         if (fineGranted || coarseGranted) {
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (Build.VERSION.SDK_INT >= 33) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
                 onEvent(HomeEvent.ToggleShoppingMode)
@@ -164,7 +180,7 @@ fun HomeScreen() {
         }
     }
 
-    LaunchedEffect(key1 = true) {
+    LaunchedEffect(true) {
         snackBarEvent.collectLatest { event ->
             when (event) {
                 is SnackBarEvent.ShowSnackBar -> {
@@ -218,8 +234,27 @@ fun HomeScreen() {
             )
         },
         onPickOnMap = {
-            onEvent(HomeEvent.DismissUpdateHome)
-            onEvent(HomeEvent.StartSelectHomeOnMap)
+            val fineGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val coarseGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (fineGranted || coarseGranted) {
+                onEvent(HomeEvent.DismissUpdateHome)
+                onEvent(HomeEvent.StartSelectHomeOnMap)
+            } else {
+                mapPickLocationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
         },
         onTempRadiusChange = { onEvent(HomeEvent.OnTempRadiusChange(it)) },
         onSave = { onEvent(HomeEvent.SaveHome) },
@@ -244,7 +279,6 @@ fun HomeScreen() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Update home button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -266,7 +300,6 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Shopping mode card
             val shoppingModeColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
 
             Card(
@@ -362,7 +395,6 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Category filter dropdown
             ExposedDropdownMenuBox(
                 expanded = isCategoryDropdownExpanded,
                 onExpandedChange = { isCategoryDropdownExpanded = !isCategoryDropdownExpanded },
@@ -447,14 +479,10 @@ fun HomeScreen() {
                         )
                         context.startActivity(intent)
                     }
-                ) {
-                    Text("Open settings")
-                }
+                ) { Text("Open settings") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = { showBackgroundLocationDialog = false }
-                ) {
+                TextButton(onClick = { showBackgroundLocationDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -500,8 +528,7 @@ private fun ItemCardSection(
 ) {
     if (toBuyItems.isEmpty()) {
         Column(
-            modifier = modifier
-                .fillMaxSize(),
+            modifier = modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
