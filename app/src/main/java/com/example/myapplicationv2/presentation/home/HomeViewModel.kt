@@ -188,7 +188,8 @@ class HomeViewModel @Inject constructor(
                             it.copy(
                                 homeLat = event.lat,
                                 homeLng = event.lng,
-                                isSelectingHomeOnMap = false
+                                isSelectingHomeOnMap = false,
+                                isUpdatingHome = true,
                             )
                         }
 
